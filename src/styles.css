@@ -9,7 +9,7 @@ img{max-width:100%}
 :root{
   --bg:#F5F6F9; --surface:#FFFFFF; --ink:#14213D; --muted:#5B6680; --line:#DCE1EB;
   --navy:#1D3461; --navy-soft:#E7EBF4; --brick:#A63A2B; --brick-soft:#F7E5E1;
-  --amber:#B8650F; --amber-soft:#FBEEDD; --ok:#2E7D5B; --ok-soft:#E1F1E9;
+  --amber:#B8650F; --amber-soft:#FBEEDD; --ok:#2E7D5B; --ok-soft:#E1F1E9; --plum:#6B4C9A;
   --f-display:"Bricolage Grotesque","Avenir Next","Segoe UI",sans-serif;
   --f-body:"IBM Plex Sans",-apple-system,"Segoe UI",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
@@ -17,11 +17,11 @@ img{max-width:100%}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0D1322; --surface:#151D31; --ink:#E7EBF4; --muted:#9AA5BD; --line:#26314D;
   --navy:#8FA9DB; --navy-soft:#1C2742; --brick:#E2785F; --brick-soft:#3A1F1B;
-  --amber:#E3A052; --amber-soft:#3A2A16; --ok:#5DC297; --ok-soft:#173226; color-scheme:dark}}
+  --amber:#E3A052; --amber-soft:#3A2A16; --ok:#5DC297; --ok-soft:#173226; --plum:#B79BE0; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0D1322; --surface:#151D31; --ink:#E7EBF4; --muted:#9AA5BD; --line:#26314D;
   --navy:#8FA9DB; --navy-soft:#1C2742; --brick:#E2785F; --brick-soft:#3A1F1B;
-  --amber:#E3A052; --amber-soft:#3A2A16; --ok:#5DC297; --ok-soft:#173226; color-scheme:dark}
+  --amber:#E3A052; --amber-soft:#3A2A16; --ok:#5DC297; --ok-soft:#173226; --plum:#B79BE0; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
 .wrap{max-width:640px;margin:0 auto;padding-inline:16px;padding-block:20px 110px;display:flex;flex-direction:column;gap:18px}
@@ -127,7 +127,7 @@ a{color:var(--navy)}
 .legend span{display:flex;align-items:center;gap:6px;min-width:0}
 .legend b{width:10px;height:10px;border-radius:3px;flex:none}
 .legend .mono{margin-left:auto;color:var(--muted)}
-.c1{background:var(--navy)}.c2{background:var(--brick)}.c3{background:var(--amber)}.c4{background:var(--ok)}
+.c1{background:var(--navy)}.c2{background:var(--brick)}.c3{background:var(--amber)}.c4{background:var(--ok)}.c5{background:var(--plum)}
 .acct-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
 .tbl-wrap{overflow-x:auto;margin-inline:-16px;padding-inline:16px}
 .tbl{border-collapse:collapse;width:100%;min-width:560px;font-size:13.5px}

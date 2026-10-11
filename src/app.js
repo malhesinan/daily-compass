@@ -287,8 +287,10 @@ function vNotes(){
  return h}
 
 /* ---------- portfolio ---------- */
-const ACCTS=[["us","USA portfolio","USD",2],["kw","Kuwait portfolio","KWD",3]];
-const FUNDS=[["gatehouse","Gatehouse Fund"],["arabi","Arabi Holding"]];
+// [id, name, currency, decimals, colour in the allocation bar]
+const ACCTS=[["us","USA portfolio","USD",2,1],["etf","ETFs","USD",2,5],["kw","Kuwait portfolio","KWD",3,2]];
+const FUNDS=[["gatehouse","Gatehouse Fund",3],["arabi","Arabi Holding",4]];
+const ccyOf=a=>(ACCTS.find(x=>x[0]===a)||[])[2]||"USD";
 const num=v=>{const n=parseFloat(String(v??"").replace(/,/g,""));return isFinite(n)?n:null};
 const nf=(n,dp)=>n==null?"—":n.toLocaleString("en-US",{minimumFractionDigits:dp,maximumFractionDigits:dp});
 const pct=n=>n==null||!isFinite(n)?"—":(n>=0?"+":"")+(n*100).toFixed(1)+"%";
@@ -307,8 +309,8 @@ function fundStats(id){const f=S.pf[id]||{};const inv=num(f.invested),val=num(f.
 
 function totals(){
  const parts=[];
- ACCTS.forEach(([a,n,c])=>{const s=acctStats(a);parts.push({n,c,cost:toKWD(s.cost,c),value:toKWD(s.value,c),has:s.rows.length>0})});
- FUNDS.forEach(([id,n])=>{const s=fundStats(id);parts.push({n,c:s.ccy,cost:toKWD(s.inv,s.ccy),value:toKWD(s.val??s.inv,s.ccy),has:s.inv!=null||s.val!=null})});
+ ACCTS.forEach(([a,n,c,,col])=>{const s=acctStats(a);parts.push({n,c,col,cost:toKWD(s.cost,c),value:toKWD(s.value,c),has:s.rows.length>0})});
+ FUNDS.forEach(([id,n,col])=>{const s=fundStats(id);parts.push({n,c:s.ccy,col,cost:toKWD(s.inv,s.ccy),value:toKWD(s.val??s.inv,s.ccy),has:s.inv!=null||s.val!=null})});
  const tv=parts.reduce((s,p)=>s+(p.value||0),0),tc=parts.reduce((s,p)=>s+(p.cost||0),0);
  return{parts,tv,tc}}
 // one point per day: the total after your latest update that day
@@ -359,11 +361,12 @@ function bindChart(){
 
 function holdingForm(a,h){
  const p=h?"he-":"h-";
- return'<div class="frow">'+(h?"":'<div class="field"><label for="h-ticker">Ticker</label><input type="text" id="h-ticker" autocapitalize="characters" placeholder="'+(a==="us"?"e.g. MSFT":"e.g. NBK")+'"></div>')+
+ return'<div class="frow">'+(h?"":'<div class="field"><label for="h-ticker">Ticker</label><input type="text" id="h-ticker" autocapitalize="characters" placeholder="'+(a==="kw"?"e.g. NBK":a==="etf"?"e.g. SPUS":"e.g. MSFT")+'"></div>')+
   '<div class="field"><label for="'+p+'name">Company (optional)</label><input type="text" id="'+p+'name" value="'+esc(h?h.name:"")+'"></div></div>'+
   '<div class="frow"><div class="field"><label for="'+p+'shares">'+(h?"Shares held":"Shares bought")+'</label><input type="number" inputmode="decimal" id="'+p+'shares" value="'+esc(h?h.shares:"")+'"></div>'+
-  '<div class="field"><label for="'+p+'avg">'+(h?"Average cost":"Price paid")+' ('+(a==="us"?"USD":"KWD")+')</label><input type="number" inputmode="decimal" id="'+p+'avg" value="'+esc(h?h.avg:"")+'"></div>'+
+  '<div class="field"><label for="'+p+'avg">'+(h?"Average cost":"Price paid")+' ('+ccyOf(a)+')</label><input type="number" inputmode="decimal" id="'+p+'avg" value="'+esc(h?h.avg:"")+'"></div>'+
   '<div class="field"><label for="'+p+'price">'+(sb?"Last price (updates automatically)":"Last price (optional)")+'</label><input type="number" inputmode="decimal" id="'+p+'price" value="'+esc(h?lastPx(h).px??"":"")+'"></div></div>'+
+  (h&&ccyOf(a)==="USD"?'<div class="field"><label for="he-acct">Category</label><select id="he-acct">'+ACCTS.filter(x=>x[2]==="USD").map(([id,n])=>'<option value="'+id+'"'+(id===a?" selected":"")+'>'+esc(n)+'</option>').join("")+'</select></div>':"")+
   (a==="kw"?'<p class="hint">Enter prices in KWD: 845 fils is 0.845.</p>':"")}
 
 /* ---------- automatic prices ---------- */
@@ -417,7 +420,7 @@ function vPortfolio(){
  const fx=fxRate();
  const {parts,tv,tc}=totals(),pl=tv-tc;
  let h='<header class="head"><div><div class="eyebrow">Total value, KWD</div><div class="big">'+nf(tv,3)+'</div></div><div class="'+cls(pl)+' mono" style="font-size:15px">'+(pl>=0?"+":"")+nf(pl,3)+' · '+pct(tc?pl/tc:null)+'</div></header>';
- if(tv>0){h+='<section class="section"><div class="alloc" role="img" aria-label="Allocation by account">'+parts.map((p,i)=>p.value?'<i class="c'+(i+1)+'" style="width:'+(p.value/tv*100)+'%"></i>':"").join("")+'</div><div class="legend">'+parts.map((p,i)=>'<span><b class="c'+(i+1)+'"></b>'+esc(p.n)+'<span class="mono">'+(p.value?(p.value/tv*100).toFixed(1)+"%":"—")+'</span></span>').join("")+'</div></section>'}
+ if(tv>0){h+='<section class="section"><div class="alloc" role="img" aria-label="Allocation by account">'+parts.map(p=>p.value?'<i class="c'+p.col+'" style="width:'+(p.value/tv*100)+'%"></i>':"").join("")+'</div><div class="legend">'+parts.map(p=>'<span><b class="c'+p.col+'"></b>'+esc(p.n)+'<span class="mono">'+(p.value?(p.value/tv*100).toFixed(1)+"%":"—")+'</span></span>').join("")+'</div></section>'}
  h+=priceStatus();
  h+=trendChart();
  h+='<div class="frow" style="align-items:flex-end"><div class="field"><label for="fx-rate">USD to KWD rate (1 USD =)</label><input type="number" inputmode="decimal" id="fx-rate" value="'+esc(S.pf.fx&&S.pf.fx.usdkwd||"")+'" placeholder="'+fx+'"></div><button class="btn ghost" data-act="fx" style="flex:0 0 auto">Save rate</button></div>';
@@ -567,6 +570,7 @@ async function act(a,d){
  case"hsave":{const h=S.holdings.find(x=>x.id===d.id);if(!h)return;const sh=num(val("he-shares")),av=num(val("he-avg")),last=num(val("he-price"));
   if(sh==null||av==null){S.err="Shares and average cost need numbers.";render();return}
   const v={...h,shares:sh,avg:av,name:val("he-name")};delete v.id;
+  const mv=val("he-acct");if(mv&&ccyOf(mv)===ccyOf(h.acct))v.acct=mv; // move between USD categories
   if(last==null){delete v.price;delete v.priceAt}else if(last!==num(h.price)){v.price=last;v.priceAt=Date.now()}
   S.hopen=null;await put("holdings",d.id,v);snapshot();break}
  case"hdel":if(S.confirmDel!==d.id){S.confirmDel=d.id;render();return}S.confirmDel=null;S.hopen=null;await del("holdings",d.id);snapshot();break;
