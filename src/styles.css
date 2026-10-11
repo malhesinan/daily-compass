@@ -138,6 +138,11 @@ a{color:var(--navy)}
 .tk{border:0;background:none;padding:0;font-family:var(--f-mono);font-weight:500;color:var(--navy);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
 .tk small{display:block;font-family:var(--f-body);color:var(--muted);text-decoration:none;font-weight:400;font-size:11.5px}
 .tbl-pf{min-width:0}
+.tbl-pf th,.tbl-pf td{padding-inline:6px}
+.tbl-pf th{white-space:normal;letter-spacing:.04em;vertical-align:bottom}
+.th-sort{border:0;background:none;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;text-align:inherit;cursor:pointer}
+.th-sort.on{color:var(--ink)}
+.th-sort span{font-size:9px;margin-left:3px}
 .tbl-pf td small{display:block;font-size:11.5px;opacity:.85}
 .hstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:0}
 .hstats div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px}

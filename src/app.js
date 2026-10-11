@@ -22,7 +22,8 @@ const NEXT_LIMIT=5;
 const ICON_UP='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 15l6-6 6 6"/></svg>';
 const ICON_DOWN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>';
 
-const S={addKind:"decide",addWt:3,showParked:false,items:[],checkins:{},holdings:[],pf:{},snaps:{},hadd:null,hopen:null,live:{},fopen:null,tab:"today",open:null,confirmDel:null,draft:[],addPrio:"normal",addCat:"Personal",loaded:false,mode:"loading",err:""};
+const S={addKind:"decide",addWt:3,showParked:false,items:[],checkins:{},holdings:[],pf:{},snaps:{},hadd:null,hopen:null,live:{},pfSort:{key:"value",dir:"desc"},fopen:null,tab:"today",open:null,confirmDel:null,draft:[],addPrio:"normal",addCat:"Personal",loaded:false,mode:"loading",err:""};
+try{const o=JSON.parse(localStorage.getItem("dc-pfsort")||"null");if(o&&["ticker","value","gain"].includes(o.key))S.pfSort=o}catch(e){}
 try{const t=localStorage.getItem("dc-tab");if(t&&TABS.some(x=>x[0]===t))S.tab=t}catch(e){}
 
 /* ---------- dates ---------- */
@@ -404,6 +405,14 @@ function priceStatus(){
  if(S.pxMissing&&S.pxMissing.length)h+='<p class="hint stale">No automatic price found for '+esc(S.pxMissing.join(", "))+'. Check the ticker, or tap it to enter a price by hand.</p>';
  return h}
 
+// Sortable columns: Ticker (A–Z), Total value and Total gain (amount). Holdings without a price sort last by gain.
+function sortTh(k,label){const o=S.pfSort,on=o.key===k,arrow=on?(o.dir==="asc"?"▲":"▼"):"";
+ return'<th'+(on?' aria-sort="'+(o.dir==="asc"?"ascending":"descending")+'"':"")+'><button class="th-sort'+(on?" on":"")+'" data-act="pfsort" data-key="'+k+'">'+label+'<span aria-hidden="true">'+arrow+'</span></button></th>'}
+function sortRows(rows){const {key,dir}=S.pfSort,m=dir==="asc"?1:-1;
+ return[...rows].sort((x,y)=>{
+  if(key==="ticker")return m*String(x.ticker).localeCompare(String(y.ticker));
+  if(key==="gain"){if(x.pl==null||y.pl==null)return(x.pl==null)-(y.pl==null);return m*(x.pl-y.pl)}
+  return m*(x.value-y.value)})}
 function vPortfolio(){
  const fx=fxRate();
  const {parts,tv,tc}=totals(),pl=tv-tc;
@@ -417,8 +426,8 @@ function vPortfolio(){
  ACCTS.forEach(([a,n,c,dp])=>{const s=acctStats(a);
   h+='<section class="card"><div class="acct-h"><div><div class="eyebrow">'+c+' · '+s.rows.length+' positions</div><h2>'+n+'</h2></div><div class="mono">'+nf(s.value,dp)+' '+c+'</div></div>';
   if(s.rows.length){
-   h+='<div class="tbl-wrap"><table class="tbl tbl-pf"><thead><tr><th>Ticker</th><th>Total value</th><th>Last price</th><th>Total gain</th></tr></thead><tbody>';
-   s.rows.forEach(r=>{const stale=r.pxAt&&(Date.now()-r.pxAt)>7*864e5;
+   h+='<div class="tbl-wrap"><table class="tbl tbl-pf"><thead><tr>'+sortTh("ticker","Ticker")+sortTh("value","Total value")+'<th>Last price</th>'+sortTh("gain","Total gain")+'</tr></thead><tbody>';
+   sortRows(s.rows).forEach(r=>{const stale=r.pxAt&&(Date.now()-r.pxAt)>7*864e5;
     h+='<tr><td><button class="tk" data-act="hopen" data-id="'+r.id+'">'+esc(r.ticker)+'</button></td><td>'+nf(r.value,dp)+'</td><td class="'+(stale?"stale":"")+'">'+(r.px==null?'<span class="muted">add</span>':nf(r.px,dp))+'</td><td class="'+cls(r.pl)+'">'+gain(r.pl,r.cost,dp)+'</td></tr>';
     if(S.hopen===r.id)h+='<tr><td class="formcell" colspan="4"><div style="display:flex;flex-direction:column;gap:10px;padding-block:4px">'+
      (r.name?'<div class="muted" style="font-size:13px">'+esc(r.name)+'</div>':"")+
@@ -494,6 +503,8 @@ async function act(a,d){
  switch(a){
  case"tab":S.fresh=true;S.tab=d.tab;S.open=null;try{localStorage.setItem("dc-tab",S.tab)}catch(e){}render();window.scrollTo(0,0);if(S.tab==="portfolio")refreshPrices();break;
  case"px":refreshPrices(true);break;
+ case"pfsort":{const o=S.pfSort;S.pfSort=o.key===d.key?{key:d.key,dir:o.dir==="asc"?"desc":"asc"}:{key:d.key,dir:d.key==="ticker"?"asc":"desc"};
+  try{localStorage.setItem("dc-pfsort",JSON.stringify(S.pfSort))}catch(e){}render();break}
  case"seg":document.querySelectorAll('[data-name="'+d.name+'"]').forEach(b=>b.setAttribute("aria-pressed",b.dataset.val===d.val));if(d.name==="addPrio")S.addPrio=d.val;if(d.name==="addCat")S.addCat=d.val;if(d.name==="addKind")S.addKind=d.val;if(d.name==="addWt")S.addWt=Number(d.val);if(d.name==="m-kind"){const nl=document.querySelector('label[for="m-next"]'),dl=document.querySelector('label[for="m-due"]');if(nl)nl.textContent=NEXT_LABEL[d.val];if(dl)dl.textContent=DATE_LABEL[d.val]}break;
  case"open":S.fresh=true;S.open=S.open===d.id?null:d.id;S.confirmDel=null;render();break;
  case"goto":{const x=item(d.id);if(!x)return;S.tab=SRC_TAB[x.type];S.fresh=true;S.open=x.id;S.confirmDel=null;try{localStorage.setItem("dc-tab",S.tab)}catch(e){}render();setTimeout(()=>{const el=document.querySelector('[data-act="open"][data-id="'+x.id+'"]');if(el)el.scrollIntoView({block:"center"})},30);break}
