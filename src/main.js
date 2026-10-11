@@ -5,7 +5,7 @@ import { startApp } from "./app.js";
 const app = document.getElementById("app");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-// Each deploy gets its own build id (set in deploy.yml). A device stays signed in until the next deploy.
+// Each deploy gets its own build id (set in vite.config.js). A device stays signed in until the next deploy.
 const BUILD = import.meta.env.VITE_BUILD_ID || "dev";
 const BUILD_KEY = "dc-build";
 
