@@ -22,7 +22,7 @@ const NEXT_LIMIT=5;
 const ICON_UP='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 15l6-6 6 6"/></svg>';
 const ICON_DOWN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>';
 
-const S={addKind:"decide",addWt:3,showParked:false,items:[],checkins:{},holdings:[],pf:{},snaps:{},hadd:null,hopen:null,fopen:null,tab:"today",open:null,confirmDel:null,draft:[],addPrio:"normal",addCat:"Personal",loaded:false,mode:"loading",err:""};
+const S={addKind:"decide",addWt:3,showParked:false,items:[],checkins:{},holdings:[],pf:{},snaps:{},hadd:null,hopen:null,live:{},fopen:null,tab:"today",open:null,confirmDel:null,draft:[],addPrio:"normal",addCat:"Personal",loaded:false,mode:"loading",err:""};
 try{const t=localStorage.getItem("dc-tab");if(t&&TABS.some(x=>x[0]===t))S.tab=t}catch(e){}
 
 /* ---------- dates ---------- */
@@ -291,12 +291,15 @@ const FUNDS=[["gatehouse","Gatehouse Fund"],["arabi","Arabi Holding"]];
 const num=v=>{const n=parseFloat(String(v??"").replace(/,/g,""));return isFinite(n)?n:null};
 const nf=(n,dp)=>n==null?"—":n.toLocaleString("en-US",{minimumFractionDigits:dp,maximumFractionDigits:dp});
 const pct=n=>n==null||!isFinite(n)?"—":(n>=0?"+":"")+(n*100).toFixed(1)+"%";
+const gain=(pl,cost,dp)=>pl==null?"—":(pl>=0?"+":"")+nf(pl,dp)+'<small>'+pct(cost?pl/cost:null)+'</small>';
 const cls=n=>n==null||!isFinite(n)||Math.abs(n)<1e-9?"":n>0?"up":"down";
 const fxRate=()=>num(S.pf.fx&&S.pf.fx.usdkwd)||0.307;
 const toKWD=(v,ccy)=>v==null?null:ccy==="USD"?v*fxRate():v;
+// Last price: the live quote when it is newer than the one saved on the holding.
+function lastPx(h){const q=S.live[yahooSymbol(h)];return q&&q.at>=(h.priceAt||0)?{px:q.price,at:q.at}:{px:num(h.price),at:h.priceAt}}
 function acctStats(a){
- const rows=S.holdings.filter(h=>h.acct===a).map(h=>{const sh=num(h.shares)||0,avg=num(h.avg)||0,px=num(h.price);
-  const cost=sh*avg,value=px==null?cost:sh*px;return{...h,sh,avg,px,cost,value,pl:px==null?null:value-cost}}).sort((x,y)=>y.value-x.value);
+ const rows=S.holdings.filter(h=>h.acct===a).map(h=>{const sh=num(h.shares)||0,avg=num(h.avg)||0,{px,at}=lastPx(h);
+  const cost=sh*avg,value=px==null?cost:sh*px;return{...h,sh,avg,px,pxAt:at,cost,value,pl:px==null?null:value-cost}}).sort((x,y)=>y.value-x.value);
  const cost=rows.reduce((s,r)=>s+r.cost,0),value=rows.reduce((s,r)=>s+r.value,0),shares=rows.reduce((s,r)=>s+r.sh,0);
  return{rows,cost,value,shares,unpriced:rows.filter(r=>r.px==null).length}}
 function fundStats(id){const f=S.pf[id]||{};const inv=num(f.invested),val=num(f.value);return{f,inv,val,ccy:f.ccy||"KWD",pl:inv!=null&&val!=null?val-inv:null}}
@@ -359,37 +362,44 @@ function holdingForm(a,h){
   '<div class="field"><label for="'+p+'name">Company (optional)</label><input type="text" id="'+p+'name" value="'+esc(h?h.name:"")+'"></div></div>'+
   '<div class="frow"><div class="field"><label for="'+p+'shares">'+(h?"Shares held":"Shares bought")+'</label><input type="number" inputmode="decimal" id="'+p+'shares" value="'+esc(h?h.shares:"")+'"></div>'+
   '<div class="field"><label for="'+p+'avg">'+(h?"Average cost":"Price paid")+' ('+(a==="us"?"USD":"KWD")+')</label><input type="number" inputmode="decimal" id="'+p+'avg" value="'+esc(h?h.avg:"")+'"></div>'+
-  '<div class="field"><label for="'+p+'price">'+(sb?"Last price (updates automatically)":"Last price (optional)")+'</label><input type="number" inputmode="decimal" id="'+p+'price" value="'+esc(h?h.price??"":"")+'"></div></div>'+
+  '<div class="field"><label for="'+p+'price">'+(sb?"Last price (updates automatically)":"Last price (optional)")+'</label><input type="number" inputmode="decimal" id="'+p+'price" value="'+esc(h?lastPx(h).px??"":"")+'"></div></div>'+
   (a==="kw"?'<p class="hint">Enter prices in KWD: 845 fils is 0.845.</p>':"")}
 
 /* ---------- automatic prices ---------- */
-// The Supabase Edge Function "quotes" fetches prices from Yahoo Finance (about 15 minutes delayed).
-// Runs when the app opens or comes back to the front (at most every 10 minutes),
-// when the Portfolio tab opens, and from the Refresh button. Prices are saved with each holding.
+// The Supabase Edge Function "quotes" fetches prices from Yahoo Finance.
+// Live: every 30 seconds while the Portfolio tab is open and on screen, plus when the app opens and from the Refresh button.
+// Live quotes are kept in memory (S.live); they are saved to the holdings every 10 minutes,
+// so other devices, offline use and the daily chart get them without a database write every 30 seconds.
+const LIVE_MS=30e3,SAVE_MS=10*60e3;
 const yahooSymbol=h=>String(h.ticker||"").toUpperCase()+(h.acct==="kw"?".KW":"");
-let pxBusy=false;
+let pxBusy=false,pxSavedAt=0;
 async function refreshPrices(force){
  if(!sb||!navigator.onLine||pxBusy||!S.holdings.length)return;
- if(!force&&Date.now()-(S.pxAt||0)<10*60e3)return;
- pxBusy=true;S.pxState="loading";if(S.tab==="portfolio")render();
+ if(!force&&Date.now()-(S.pxAt||0)<LIVE_MS-2000)return;
+ pxBusy=true;
+ if(force||!S.pxAt){S.pxState="loading";if(S.tab==="portfolio")render()}
  try{
   const {data,error}=await sb.functions.invoke("quotes",{body:{symbols:[...new Set(S.holdings.map(yahooSymbol))]}});
   if(error)throw error;
-  const docs=[];
-  S.holdings.forEach(h=>{const q=data&&data[yahooSymbol(h)];if(!q)return;
-   const px=+(q.currency==="KWF"?q.price/1000:q.price).toFixed(4); // Kuwait prices come in fils
-   const at=q.time?q.time*1000:Date.now();
-   if(num(h.price)===px&&h.priceAt===at)return;
-   const v={...h,price:px,priceAt:at};delete v.id;docs.push({coll:"holdings",id:h.id,data:v})});
+  for(const [sym,q] of Object.entries(data||{}))
+   S.live[sym]={price:+(q.currency==="KWF"?q.price/1000:q.price).toFixed(4),at:q.time?q.time*1000:Date.now()}; // Kuwait prices come in fils
   S.pxAt=Date.now();S.pxState="ok";S.pxMissing=S.holdings.filter(h=>!(data&&data[yahooSymbol(h)])).map(h=>h.ticker);
-  if(docs.length){putMany(docs);snapshot()}else render();
- }catch(e){console.warn("Price update failed:",e);S.pxState="error";render()}
+  const docs=[];
+  if(force||Date.now()-pxSavedAt>=SAVE_MS){pxSavedAt=Date.now();
+   S.holdings.forEach(h=>{const q=S.live[yahooSymbol(h)];if(!q||(num(h.price)===q.price&&h.priceAt===q.at))return;
+    const v={...h,price:q.price,priceAt:q.at};delete v.id;docs.push({coll:"holdings",id:h.id,data:v})})}
+  if(docs.length){putMany(docs);snapshot()}else liveRender();
+ }catch(e){console.warn("Price update failed:",e);S.pxState="error";liveRender()}
  finally{pxBusy=false}
 }
+// Redraw for a price tick, unless you're typing in a field.
+function liveRender(){const el=document.activeElement;if(S.tab==="portfolio"&&!(el&&/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))render()}
+setInterval(()=>{if(S.tab==="portfolio"&&document.visibilityState==="visible")refreshPrices()},LIVE_MS);
+document.addEventListener("visibilitychange",()=>{if(S.tab==="portfolio"&&document.visibilityState==="visible")refreshPrices()});
 function priceStatus(){
  if(!sb)return'<p class="hint">Demo mode: prices are entered by hand.</p>';
- const t=S.pxAt?new Date(S.pxAt).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"";
- const msg=S.pxState==="loading"?"Updating prices…":S.pxState==="error"?"Couldn't update prices just now.":t?"Prices updated "+t+" (Yahoo Finance, about 15 min delayed).":"Prices update automatically.";
+ const t=S.pxAt?new Date(S.pxAt).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit"}):"";
+ const msg=S.pxState==="loading"?"Updating prices…":S.pxState==="error"?"Couldn't update prices just now. Trying again shortly.":t?"Live prices, updated "+t+". Refreshes every 30 seconds (Yahoo Finance).":"Prices update automatically.";
  let h='<div class="frow" style="align-items:center"><p class="hint" style="flex:1 1 200px">'+msg+'</p><button class="btn ghost" data-act="px" style="flex:0 0 auto;padding:6px 12px;font-size:13px"'+(S.pxState==="loading"?" disabled":"")+'>Refresh prices</button></div>';
  if(S.pxMissing&&S.pxMissing.length)h+='<p class="hint stale">No automatic price found for '+esc(S.pxMissing.join(", "))+'. Check the ticker, or tap it to enter a price by hand.</p>';
  return h}
@@ -405,14 +415,17 @@ function vPortfolio(){
  if(!S.pf.fx)h+='<p class="hint">Using 0.307 until you save today\'s rate.</p>';
 
  ACCTS.forEach(([a,n,c,dp])=>{const s=acctStats(a);
-  h+='<section class="card"><div class="acct-h"><div><div class="eyebrow">'+c+' · '+s.rows.length+' positions · '+nf(s.shares,0)+' shares</div><h2>'+n+'</h2></div><div class="mono">'+nf(s.value,dp)+' '+c+'</div></div>';
+  h+='<section class="card"><div class="acct-h"><div><div class="eyebrow">'+c+' · '+s.rows.length+' positions</div><h2>'+n+'</h2></div><div class="mono">'+nf(s.value,dp)+' '+c+'</div></div>';
   if(s.rows.length){
-   h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Ticker</th><th>Shares</th><th>Avg cost</th><th>Cost basis</th><th>Last</th><th>Value</th><th>P/L</th><th>Weight</th></tr></thead><tbody>';
-   s.rows.forEach(r=>{const stale=r.priceAt&&(Date.now()-r.priceAt)>7*864e5;
-    h+='<tr><td><button class="tk" data-act="hopen" data-id="'+r.id+'">'+esc(r.ticker)+(r.name?'<small>'+esc(r.name)+'</small>':"")+'</button></td><td>'+nf(r.sh,r.sh%1?2:0)+'</td><td>'+nf(r.avg,dp)+'</td><td>'+nf(r.cost,dp)+'</td><td class="'+(stale?"stale":"")+'">'+(r.px==null?'<span class="muted">add</span>':nf(r.px,dp))+'</td><td>'+nf(r.value,dp)+'</td><td class="'+cls(r.pl)+'">'+(r.pl==null?"—":pct(r.cost?r.pl/r.cost:null))+'</td><td>'+(s.value?(r.value/s.value*100).toFixed(1)+"%":"—")+'</td></tr>';
-    if(S.hopen===r.id)h+='<tr><td class="formcell" colspan="8"><div style="display:flex;flex-direction:column;gap:10px;padding-block:4px">'+holdingForm(a,r)+'<div class="actions"><button class="btn danger" data-act="hdel" data-id="'+r.id+'">'+(S.confirmDel===r.id?"Tap again to remove":"Remove")+'</button><button class="btn ghost" data-act="hclose">Cancel</button><button class="btn" data-act="hsave" data-id="'+r.id+'">Save</button></div></div></td></tr>'});
+   h+='<div class="tbl-wrap"><table class="tbl tbl-pf"><thead><tr><th>Ticker</th><th>Total value</th><th>Last price</th><th>Total gain</th></tr></thead><tbody>';
+   s.rows.forEach(r=>{const stale=r.pxAt&&(Date.now()-r.pxAt)>7*864e5;
+    h+='<tr><td><button class="tk" data-act="hopen" data-id="'+r.id+'">'+esc(r.ticker)+'</button></td><td>'+nf(r.value,dp)+'</td><td class="'+(stale?"stale":"")+'">'+(r.px==null?'<span class="muted">add</span>':nf(r.px,dp))+'</td><td class="'+cls(r.pl)+'">'+gain(r.pl,r.cost,dp)+'</td></tr>';
+    if(S.hopen===r.id)h+='<tr><td class="formcell" colspan="4"><div style="display:flex;flex-direction:column;gap:10px;padding-block:4px">'+
+     (r.name?'<div class="muted" style="font-size:13px">'+esc(r.name)+'</div>':"")+
+     '<dl class="hstats"><div><dt>Shares</dt><dd>'+nf(r.sh,r.sh%1?2:0)+'</dd></div><div><dt>Average cost</dt><dd>'+nf(r.avg,dp)+'</dd></div><div><dt>Total cost</dt><dd>'+nf(r.cost,dp)+'</dd></div><div><dt>Weight</dt><dd>'+(s.value?(r.value/s.value*100).toFixed(1)+"%":"—")+'</dd></div></dl>'+
+     holdingForm(a,r)+'<div class="actions"><button class="btn danger" data-act="hdel" data-id="'+r.id+'">'+(S.confirmDel===r.id?"Tap again to remove":"Remove")+'</button><button class="btn ghost" data-act="hclose">Cancel</button><button class="btn" data-act="hsave" data-id="'+r.id+'">Save</button></div></div></td></tr>'});
    const spl=s.value-s.cost;
-   h+='</tbody><tfoot><tr><td>Total</td><td>'+nf(s.shares,0)+'</td><td></td><td>'+nf(s.cost,dp)+'</td><td></td><td>'+nf(s.value,dp)+'</td><td class="'+cls(spl)+'">'+pct(s.cost?spl/s.cost:null)+'</td><td>100%</td></tr></tfoot></table></div>';
+   h+='</tbody><tfoot><tr><td>Total</td><td>'+nf(s.value,dp)+'</td><td></td><td class="'+cls(spl)+'">'+gain(spl,s.cost,dp)+'</td></tr></tfoot></table></div>';
    if(s.unpriced)h+='<p class="hint">'+s.unpriced+' without a last price are valued at cost. Tap a ticker to update.</p>';
   }else h+='<div class="empty">No holdings yet. Add each ticker with shares and average cost.</div>';
   if(S.hadd===a){h+='<div style="display:flex;flex-direction:column;gap:10px">'+holdingForm(a,null)+'<p class="hint">Adding a ticker you already hold records a new buy and recalculates its average cost.</p><div class="actions"><button class="btn ghost" data-act="hcancel">Cancel</button><button class="btn" data-act="hadd" data-acct="'+a+'">Save holding</button></div></div>'}
