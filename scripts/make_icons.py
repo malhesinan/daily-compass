@@ -1,35 +1,38 @@
-"""Generate the PNG app icons (navy square, white check mark, red star) with no dependencies.
+"""Generate the PNG app icons ("Pick three": three slots, the first ticked) with no dependencies.
 Run: python3 scripts/make_icons.py"""
 import math, struct, zlib
 
-NAVY, WHITE, RED = (0x1D, 0x34, 0x61), (255, 255, 255), (0xA6, 0x3A, 0x2B)
+NAVY, WHITE, BRICK = (0x1D, 0x34, 0x61), (255, 255, 255), (0xA6, 0x3A, 0x2B)
+S = 1 / 96  # design is drawn on a 96 x 96 grid
+SCALE = 0.94  # keep everything inside the iPhone/Android safe area
 
 def seg_dist(px, py, ax, ay, bx, by):
     dx, dy = bx - ax, by - ay
     t = max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
     return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
 
-def in_star(px, py, cx, cy, r_out, r_in):
-    pts = []
-    for i in range(10):
-        r = r_out if i % 2 == 0 else r_in
-        a = -math.pi / 2 + i * math.pi / 5
-        pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
-    inside = False
-    j = len(pts) - 1
-    for i in range(len(pts)):
-        xi, yi = pts[i]; xj, yj = pts[j]
-        if (yi > py) != (yj > py) and px < (xj - xi) * (py - yi) / (yj - yi) + xi:
-            inside = not inside
-        j = i
-    return inside
+def in_rrect(x, y, rx, ry, w, h, r):
+    if not (rx <= x <= rx + w and ry <= y <= ry + h):
+        return False
+    cx = min(max(x, rx + r), rx + w - r)
+    cy = min(max(y, ry + r), ry + h - r)
+    return math.hypot(x - cx, y - cy) <= r
+
+def mix(a, b, t):
+    return tuple(round(a[i] * (1 - t) + b[i] * t) for i in range(3))
 
 def color_at(x, y):  # x, y in 0..1
-    if in_star(x, y, 0.70, 0.30, 0.13, 0.055):
-        return RED
-    check = [(0.26, 0.54), (0.42, 0.70), (0.62, 0.46)]
-    if min(seg_dist(x, y, *check[0], *check[1]), seg_dist(x, y, *check[1], *check[2])) < 0.055:
-        return WHITE
+    x, y = (x - 0.5) / SCALE / S + 48, (y - 0.5) / SCALE / S + 48  # to the 96 grid
+    if in_rrect(x, y, 20, 22, 56, 14, 5):  # slot 1: brick, ticked
+        if min(seg_dist(x, y, 26, 29, 30, 33), seg_dist(x, y, 30, 33, 37, 25)) < 1.6:
+            return WHITE
+        if in_rrect(x, y, 42, 27.5, 26, 3, 1.5):
+            return WHITE
+        return BRICK
+    if in_rrect(x, y, 20, 41, 56, 14, 5):
+        return mix(NAVY, WHITE, 0.9)
+    if in_rrect(x, y, 20, 60, 56, 14, 5):
+        return mix(NAVY, WHITE, 0.55)
     return NAVY
 
 def render(size, path, ss=4):

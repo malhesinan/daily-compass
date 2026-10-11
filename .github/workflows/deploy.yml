@@ -24,11 +24,21 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Stop here (instead of publishing a "demo mode" site) if the Supabase keys are missing.
+      - name: Check Supabase keys
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are not set. Add them in Settings → Secrets and variables → Actions (Variables tab), then run this workflow again."
+            exit 1
+          fi
       # Site lives at https://<user>.github.io/<repo>/ — set a BASE_PATH variable to override (e.g. "/" for a custom domain).
       - run: npm run build -- --base=${{ vars.BASE_PATH || format('/{0}/', github.event.repository.name) }}
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

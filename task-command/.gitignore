@@ -1,8 +1,0 @@
-node_modules
-dist
-.env
-.env.local
-.DS_Store
-# Personal data: never commit
-daily-compass-export.json
-daily-compass-backup-*.json
