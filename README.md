@@ -15,18 +15,22 @@ Everything here is free. Nothing requires a paid plan.
    (e.g. *Middle East (Bahrain)* or *Central EU (Frankfurt)*). Save the database password somewhere safe; the app doesn't need it.
 2. **Create the table:** open **SQL Editor → New query**, paste all of [`supabase/migrations/001_docs.sql`](supabase/migrations/001_docs.sql), click **Run**.
    It should say "Success. No rows returned".
-3. **Create your user:** **Authentication → Users → Add user → Create new user**. Enter your email,
-   any long random password (you won't use it), and tick **Auto Confirm User**.
+3. **Create your user:** you sign in with a **username** and a **4-digit code**. Behind the scenes that is a normal
+   Supabase user with email `<username>@users.daily-compass.app` and password `dc:<username>:<code>`.
+   **Authentication → Users → Add user → Create new user** with email `yourname@users.daily-compass.app`,
+   password `dc:yourname:1234`, and tick **Auto Confirm User**. (Username in lowercase.)
+
+   **Already have a user from the old email-code login?** Keep your data by renaming it instead:
+   ```sql
+   update auth.users
+   set email = 'yourname@users.daily-compass.app',
+       encrypted_password = extensions.crypt('dc:yourname:1234', extensions.gen_salt('bf'))
+   where email = 'your-old-email@example.com';
+   ```
+   To change your code later, run the same `update` with the new code (and `where email = 'yourname@users.daily-compass.app'`).
 4. **Turn off public sign-ups:** **Authentication → Sign In / Providers**, switch off **Allow new users to sign up**, then Save.
    From now on nobody else can create an account. Row Level Security also stops any other account from reading your rows.
-5. **Put the login code in the email:** **Authentication → Emails → Templates → Magic Link**. Replace the body with:
-   ```html
-   <h2>Your Daily Compass code</h2>
-   <p style="font-size:28px;letter-spacing:4px"><strong>{{ .Token }}</strong></p>
-   <p>Or on this device: <a href="{{ .ConfirmationURL }}">sign in with a link</a></p>
-   ```
-   Why a code? On iPhone, the Home Screen app keeps its login separate from Safari. A link
-   opens Safari, so you type the code into the app instead.
+5. **Check that email sign-in is on:** **Authentication → Sign In / Providers → Email** should be enabled (it is by default).
 6. **Set the site address:** **Authentication → URL Configuration**
    - **Site URL:** `https://<your-github-username>.github.io/daily-compass/`
    - **Redirect URLs:** add `http://localhost:5173/**` (for local development)
@@ -40,8 +44,7 @@ Everything here is free. Nothing requires a paid plan.
    Kuwait tickers are looked up as `<TICKER>.KW` and converted from fils to KWD.
 
 > **Free tier notes:** Supabase pauses a free project after about 7 days without any use. Your data is kept, and you
-> click **Restore** in the dashboard to wake it. Daily use keeps it awake. The built-in email sender only allows a few emails
-> per hour, which is plenty for signing in once per device.
+> click **Restore** in the dashboard to wake it. Daily use keeps it awake.
 
 ## 2. Run it on your computer
 
@@ -80,8 +83,8 @@ For a custom domain, also add a variable `BASE_PATH` = `/`.
 
 ## 4. Install on iPhone
 
-Open the site in **Safari** → **Share** → **Add to Home Screen**. Open it from the Home Screen icon, enter your email, then type the code from the email.
-You stay signed in on that device.
+Open the site in **Safari** → **Share** → **Add to Home Screen**. Open it from the Home Screen icon and enter your username and 4-digit code.
+That device stays signed in until the next deploy; after each deploy every device asks for the code once.
 
 ## Moving your data in
 
