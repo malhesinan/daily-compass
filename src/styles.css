@@ -35,6 +35,10 @@ button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--navy);outline-offset:2px}
 .head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.head-r{display:flex;align-items:center;gap:12px;margin-left:auto}
+.addbtn{flex:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--navy);background:var(--navy);color:var(--surface);display:grid;place-items:center;padding:0}
+.addbtn svg{width:20px;height:20px}
+.addbtn.on{background:transparent;border-color:var(--line);color:var(--ink)}
 .streak{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:var(--brick-soft);color:var(--brick);font-weight:600;font-size:13px}
 .streak b{font-family:var(--f-mono);font-size:15px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}

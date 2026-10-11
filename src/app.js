@@ -22,7 +22,7 @@ const NEXT_LIMIT=5;
 const ICON_UP='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 15l6-6 6 6"/></svg>';
 const ICON_DOWN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>';
 
-const S={addKind:"decide",addWt:3,showParked:false,items:[],checkins:{},holdings:[],pf:{},snaps:{},hadd:null,hopen:null,live:{},pfSort:{key:"value",dir:"desc"},fopen:null,tab:"today",open:null,confirmDel:null,draft:[],addPrio:"normal",addCat:"Personal",loaded:false,mode:"loading",err:""};
+const S={addKind:"decide",addWt:3,showParked:false,items:[],checkins:{},holdings:[],pf:{},snaps:{},hadd:null,hopen:null,live:{},pfSort:{key:"value",dir:"desc"},fopen:null,tab:"today",open:null,adding:null,confirmDel:null,draft:[],addPrio:"normal",addCat:"Personal",loaded:false,mode:"loading",err:""};
 try{const o=JSON.parse(localStorage.getItem("dc-pfsort")||"null");if(o&&["ticker","value","gain"].includes(o.key))S.pfSort=o}catch(e){}
 try{const t=localStorage.getItem("dc-tab");if(t&&TABS.some(x=>x[0]===t))S.tab=t}catch(e){}
 
@@ -176,7 +176,11 @@ function vToday(){
  if(pinned.length)h+='<section class="section"><h3>Remember</h3>'+pinned.map(x=>'<div class="card"><div class="note">'+esc(x.title)+(x.note?"\n"+esc(x.note):"")+'</div></div>').join("")+'</section>';
  return h}
 
+// Round + button in a page header: opens that page's add box, and turns into × to close it
+function addToggle(key){const on=S.adding===key;
+ return'<button class="addbtn'+(on?' on':'')+'" data-act="addToggle" data-key="'+key+'" aria-label="'+(on?"Close":"Add")+'" aria-expanded="'+on+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'+(on?'<path d="M6 6l12 12M18 6L6 18"/>':'<path d="M12 5v14M5 12h14"/>')+'</svg></button>'}
 function quickAdd(type){
+ if(S.adding!==type)return"";
  let h='<section class="card"><div class="field"><label for="q-title">'+({tasks:"New task",goals:"New priority",plans:"New plan",wishes:"Add to wish list",notes:"New note"})[type]+'</label>';
  h+=type==="notes"?'<textarea id="q-title" placeholder="Something to remember"></textarea>':'<input type="text" id="q-title" placeholder="'+({tasks:"What needs doing?",goals:"e.g. Family stability first",plans:"e.g. Classic Porsche import",wishes:"e.g. Outdoor jacket"})[type]+'">';
  h+='</div>';
@@ -211,7 +215,7 @@ function vTimeline(){
 function vTasks(){
  const t=of("tasks"),open=t.filter(x=>!x.done).sort(byPrio),ws=weekStart();
  const doneW=t.filter(x=>x.done&&(x.doneAt||0)>=ws).sort((a,b)=>b.doneAt-a.doneAt);
- let h='<header class="head"><div><div class="eyebrow">'+open.length+' open</div><h1>To-do</h1></div></header>'+quickAdd("tasks");
+ let h='<header class="head"><div><div class="eyebrow">'+open.length+' open</div><h1>To-do</h1></div>'+addToggle("tasks")+'</header>'+quickAdd("tasks");
  const next=open.filter(x=>x.star).sort(byPrioAge),rest=open.filter(x=>!x.star);
  if(next.length<NEXT_LIMIT)S.nextFull=false;
  h+='<section class="section"><div class="section-h"><h3 style="color:var(--brick)">★ Next 5 to do</h3><span class="mono muted">'+next.length+'/'+NEXT_LIMIT+'</span></div>'+
@@ -255,9 +259,9 @@ function vGoals(){
  const visible=active.filter(x=>!parked(x)),hidden=active.filter(parked);
  const load=visible.reduce((s,x)=>s+(x.weight||1),0);
  const closed=all.filter(x=>x.done&&(x.doneAt||0)>=ws);
- let h='<header class="head"><div><div class="eyebrow">Open loops</div><h1>On my mind</h1></div><div class="load"><span class="eyebrow">Mental load</span><span class="big">'+load+'</span><span class="mono muted">/ '+(visible.length*5||35)+'</span></div></header>';
+ let h='<header class="head"><div><div class="eyebrow">Open loops</div><h1>On my mind</h1></div><div class="head-r"><div class="load"><span class="eyebrow">Mental load</span><span class="big">'+load+'</span><span class="mono muted">/ '+(visible.length*5||35)+'</span></div>'+addToggle("mind")+'</div></header>';
  if(visible.length>7)h+='<div class="notice">'+visible.length+' active loops. Keep it to 7: move clear actions to To-do and bigger projects to Plans.</div>';
- h+='<section class="card"><div class="field"><label for="m-new">Brain dump</label><input type="text" id="m-new" placeholder="What keeps coming back to you?"></div>'+kindSeg("addKind",S.addKind)+'<div class="field"><label>Weight</label>'+wtSeg("addWt",S.addWt)+'</div><div class="actions"><button class="btn" data-act="madd">Add</button></div></section>';
+ if(S.adding==="mind")h+='<section class="card"><div class="field"><label for="m-new">Brain dump</label><input type="text" id="m-new" placeholder="What keeps coming back to you?"></div>'+kindSeg("addKind",S.addKind)+'<div class="field"><label>Weight</label>'+wtSeg("addWt",S.addWt)+'</div><div class="actions"><button class="btn" data-act="madd">Add</button></div></section>';
  KINDS.forEach(([k,l,desc])=>{const L=visible.filter(x=>x.kind===k).sort((a,b)=>(b.weight||0)-(a.weight||0)||((a.due||"9")<(b.due||"9")?-1:(a.due||"9")>(b.due||"9")?1:0));
   h+='<section class="section"><div class="kind-h"><div><h3>'+l+'</h3><p>'+desc+'</p></div><span class="mono muted">'+L.length+'</span></div>'+(L.length?'<div class="list">'+L.map(mindRow).join("")+'</div>':'<div class="empty">Nothing here.</div>')+'</section>'});
  if(hidden.length){h+='<section class="section"><button class="linkbtn" data-act="mparked">'+(S.showParked?"Hide":"Show")+' '+hidden.length+' parked until their check-back date</button>'+(S.showParked?'<div class="list">'+hidden.sort((a,b)=>a.due<b.due?-1:1).map(mindRow).join("")+'</div>':"")+'</section>'}
@@ -267,7 +271,7 @@ function vGoals(){
 
 function vPlans(){
  const p=of("plans"),open=p.filter(x=>!x.done).sort((a,b)=>(a.due||"9")<(b.due||"9")?-1:1),done=p.filter(x=>x.done);
- let h='<header class="head"><div><div class="eyebrow">'+open.length+' active</div><h1>Plans</h1></div></header>'+quickAdd("plans");
+ let h='<header class="head"><div><div class="eyebrow">'+open.length+' active</div><h1>Plans</h1></div>'+addToggle("plans")+'</header>'+quickAdd("plans");
  h+=open.length?'<div class="list">'+open.map(x=>row(x)).join("")+'</div>':'<div class="empty">Bigger things with a target date: a trip, a purchase, a project.</div>';
  if(done.length)h+='<section class="section"><h3 class="muted">Completed</h3><div class="list">'+done.map(x=>row(x,{noPill:true})).join("")+'</div></section>';
  return h}
@@ -275,14 +279,14 @@ function vPlans(){
 function vWishes(){
  const w=of("wishes"),open=w.filter(x=>!x.done).sort(byPrio),got=w.filter(x=>x.done);
  const total=open.reduce((s,x)=>s+(parseFloat(x.price)||0),0);
- let h='<header class="head"><div><div class="eyebrow">'+open.length+' items</div><h1>Wish list</h1></div>'+(total?'<div class="total">'+total.toLocaleString("en-GB",{maximumFractionDigits:3})+' KD priced</div>':"")+'</header>'+quickAdd("wishes");
+ let h='<header class="head"><div><div class="eyebrow">'+open.length+' items</div><h1>Wish list</h1></div><div class="head-r">'+(total?'<div class="total">'+total.toLocaleString("en-GB",{maximumFractionDigits:3})+' KD priced</div>':"")+addToggle("wishes")+'</div></header>'+quickAdd("wishes");
  h+=open.length?'<div class="list">'+open.map(x=>row(x)).join("")+'</div>':'<div class="empty">Nothing on the list yet.</div>';
  if(got.length)h+='<section class="section"><h3 class="muted">Got it</h3><div class="list">'+got.map(x=>row(x,{noPill:true})).join("")+'</div></section>';
  return h}
 
 function vNotes(){
  const n=of("notes").sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||(b.createdAt||0)-(a.createdAt||0));
- let h='<header class="head"><div><div class="eyebrow">Pinned notes show on Today</div><h1>Notes</h1></div></header>'+quickAdd("notes");
+ let h='<header class="head"><div><div class="eyebrow">Pinned notes show on Today</div><h1>Notes</h1></div>'+addToggle("notes")+'</header>'+quickAdd("notes");
  h+=n.length?'<div class="list">'+n.map(x=>{const open=S.open===x.id;return'<div class="row p-'+(x.pinned?"asap":"low")+'"><div class="row-top"><button class="row-main" data-act="open" data-id="'+x.id+'"><span class="row-title note">'+esc(x.title)+'</span>'+(x.note?'<span class="row-meta note">'+esc(x.note)+'</span>':"")+'<span class="row-meta">'+new Date(x.createdAt||Date.now()).toLocaleDateString("en-GB",{day:"numeric",month:"short"})+'</span></button><button class="btn ghost" style="padding:5px 10px;font-size:12.5px;flex:none" data-act="pin" data-id="'+x.id+'">'+(x.pinned?"Unpin":"Pin")+'</button></div>'+(open?editor(x):"")+'</div>'}).join("")+'</div>':'<div class="empty">Thoughts, reminders, things you don\'t want to lose.</div>';
  return h}
 
@@ -504,13 +508,13 @@ const segVal=name=>{const b=document.querySelector('[data-name="'+name+'"][aria-
 async function act(a,d){
  S.err="";
  switch(a){
- case"tab":S.fresh=true;S.tab=d.tab;S.open=null;try{localStorage.setItem("dc-tab",S.tab)}catch(e){}render();window.scrollTo(0,0);if(S.tab==="portfolio")refreshPrices();break;
+ case"tab":S.fresh=true;S.tab=d.tab;S.open=null;S.adding=null;try{localStorage.setItem("dc-tab",S.tab)}catch(e){}render();window.scrollTo(0,0);if(S.tab==="portfolio")refreshPrices();break;
  case"px":refreshPrices(true);break;
  case"pfsort":{const o=S.pfSort;S.pfSort=o.key===d.key?{key:d.key,dir:o.dir==="asc"?"desc":"asc"}:{key:d.key,dir:d.key==="ticker"?"asc":"desc"};
   try{localStorage.setItem("dc-pfsort",JSON.stringify(S.pfSort))}catch(e){}render();break}
  case"seg":document.querySelectorAll('[data-name="'+d.name+'"]').forEach(b=>b.setAttribute("aria-pressed",b.dataset.val===d.val));if(d.name==="addPrio")S.addPrio=d.val;if(d.name==="addCat")S.addCat=d.val;if(d.name==="addKind")S.addKind=d.val;if(d.name==="addWt")S.addWt=Number(d.val);if(d.name==="m-kind"){const nl=document.querySelector('label[for="m-next"]'),dl=document.querySelector('label[for="m-due"]');if(nl)nl.textContent=NEXT_LABEL[d.val];if(dl)dl.textContent=DATE_LABEL[d.val]}break;
  case"open":S.fresh=true;S.open=S.open===d.id?null:d.id;S.confirmDel=null;render();break;
- case"goto":{const x=item(d.id);if(!x)return;S.tab=SRC_TAB[x.type];S.fresh=true;S.open=x.id;S.confirmDel=null;try{localStorage.setItem("dc-tab",S.tab)}catch(e){}render();setTimeout(()=>{const el=document.querySelector('[data-act="open"][data-id="'+x.id+'"]');if(el)el.scrollIntoView({block:"center"})},30);break}
+ case"goto":{const x=item(d.id);if(!x)return;if(S.tab!==SRC_TAB[x.type])S.adding=null;S.tab=SRC_TAB[x.type];S.fresh=true;S.open=x.id;S.confirmDel=null;try{localStorage.setItem("dc-tab",S.tab)}catch(e){}render();setTimeout(()=>{const el=document.querySelector('[data-act="open"][data-id="'+x.id+'"]');if(el)el.scrollIntoView({block:"center"})},30);break}
  case"close":S.open=null;S.confirmDel=null;render();break;
  case"toggle":{const it=item(d.id);if(it)patch(d.id,it.done?{done:false,doneAt:null}:{done:true,doneAt:Date.now(),star:false});break}
  case"star":{const it=item(d.id);if(!it)return;
@@ -557,6 +561,8 @@ async function act(a,d){
   await put("checkins",k,{...c,focus:f});if(x.itemId&&item(x.itemId))patch(x.itemId,x.done?{done:true,doneAt:Date.now(),star:false}:{done:false,doneAt:null});break}
  case"fx":{const r=num(val("fx-rate"));if(!r||r<=0){S.err="Enter the rate as KWD per 1 USD, for example 0.307.";render();return}await put("pf","fx",{usdkwd:r,at:Date.now()});snapshot();break}
  case"hnew":S.fresh=true;S.hadd=d.acct;S.hopen=null;render();setTimeout(()=>{const el=document.getElementById("h-ticker");if(el)el.focus()},30);break;
+ case"addToggle":S.adding=S.adding===d.key?null:d.key;S.addPrio="normal";render();
+  if(S.adding)setTimeout(()=>{const el=document.getElementById(S.adding==="mind"?"m-new":"q-title");if(el)el.focus()},30);break;
  case"hcancel":S.hadd=null;render();break;
  case"hopen":S.fresh=true;S.hopen=S.hopen===d.id?null:d.id;S.hadd=null;S.confirmDel=null;render();break;
  case"hclose":S.hopen=null;S.confirmDel=null;render();break;

@@ -10,3 +10,6 @@ daily-compass-backup-*.json
 
 # One-off data loads (personal data)
 portfolio-*.sql
+
+# One-off wish list loads (personal data)
+wishlist-*.sql
