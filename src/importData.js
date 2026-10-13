@@ -6,7 +6,7 @@
 const COLLECTIONS = ["items", "checkins", "holdings", "pf", "snaps"];
 const LISTS = ["items", "holdings"]; // stored as arrays of {id, ...}; the others are {id: data}
 
-const PRIO_MAP = { now: "high", soon: "normal", later: "low", asap: "asap", high: "high", medium: "normal", normal: "normal", low: "low" };
+const PRIO_MAP = { now: "high", soon: "normal", later: "low", asap: "high", high: "high", medium: "normal", normal: "normal", low: "low" };
 const squash = (s) => String(s ?? "").toLowerCase().replace(/[^a-z]/g, "");
 const CAT_MAP = { finance: "Investment", investments: "Investment", investment: "Investment" }; // everything else → Personal
 
@@ -35,6 +35,7 @@ export function importToDocs(text, S, uid) {
         for (const x of v) {
           if (!x || typeof x !== "object") continue;
           const { id, ...data } = x;
+          if (data.type === "notes") continue; // the Notes tab was removed
           docs.push({ coll, id: String(id || uid()), data });
         }
       } else {

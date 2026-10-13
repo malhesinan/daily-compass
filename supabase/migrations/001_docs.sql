@@ -2,7 +2,7 @@
 -- Run once in Supabase → SQL Editor → New query → paste → Run.
 --
 -- collection | what it holds
--- items      | tasks, plans, wish list, On my mind, notes  (data.type says which)
+-- items      | tasks, plans, wish list, On my mind, day plans  (data.type says which)
 -- checkins   | one per day: the 3 focus items, intention, evening note (id = date)
 -- holdings   | portfolio positions
 -- pf         | fund values and the USD→KWD rate

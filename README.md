@@ -1,6 +1,6 @@
 # Daily Compass
 
-Your daily board (Today check-in, Timeline, To-do with a ★ Next 5 queue, Mind, Plans, Wish list, Portfolio, Notes)
+Your daily board (Timeline, To-do with a ★ Next 5 queue, Mind, Plans, Wish list, Portfolio)
 as a Home Screen app for iPhone and a website for your laptop. Everything syncs between devices through Supabase,
 keeps working offline, and updates live.
 
@@ -90,7 +90,7 @@ That device stays signed in until the next deploy; after each deploy every devic
 
 At the bottom of any page, tap **Import** and paste either of these:
 - **A Daily Compass backup**: the file from **Export backup**, or the `daily-compass-export.json` made from the Claude artifact.
-  Everything comes across: tasks, check-ins and streak, Mind, plans, wishes, notes, portfolio and chart history.
+  Everything comes across: tasks, check-ins, Mind, plans, wishes, portfolio and chart history.
 - **The old task-list prototype** (a JSON array). Mapping: `now → High`, `soon → Normal`, `later → Low`.
   Categories: Investments/Finance → Investment, Wish list → the Wish list tab, anything else → Personal.
   Pinned tasks go into Next 5 while there is room.

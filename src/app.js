@@ -2,20 +2,21 @@
 // storage now goes to Supabase (see "store" below), plus a Next 5 queue on the To-do tab.
 import { importToDocs, backupJSON } from "./importData.js";
 
-const PRIO=[["asap","ASAP"],["high","High"],["normal","Normal"],["low","Low"]];
-const PRANK={asap:0,high:1,normal:2,low:3};
+const PRIO=[["high","High"],["normal","Normal"],["low","Low"]];
+const PRANK={high:1,normal:2,low:3};
 const CATS=["Investment","Personal"];
 // Older tasks may still say Finance, Work or Family: Finance shows as Investment, the others as Personal.
 const catOf=x=>x.cat==="Finance"||x.cat==="Investment"?"Investment":"Personal";
+// The first tab shows the Timeline page instead of Today (check-in, Plan ahead). Set to false to bring Today back.
+const TEST_TIMELINE=true;
 const TABS=[
- ["today","Today",'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'],
- ["timeline","Timeline",'<path d="M4 6h3M4 12h3M4 18h3"/><circle cx="11" cy="6" r="1.6"/><circle cx="11" cy="12" r="1.6"/><circle cx="11" cy="18" r="1.6"/><path d="M15 6h5M15 12h5M15 18h5"/>'],
+ TEST_TIMELINE?["today","Timeline",'<path d="M4 6h3M4 12h3M4 18h3"/><circle cx="11" cy="6" r="1.6"/><circle cx="11" cy="12" r="1.6"/><circle cx="11" cy="18" r="1.6"/><path d="M15 6h5M15 12h5M15 18h5"/>']
+  :["today","Today",'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'],
  ["tasks","To-do",'<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12l3 3 5-6"/>'],
  ["goals","Mind",'<path d="M7 18a4 4 0 0 1-.7-7.9A5.5 5.5 0 0 1 17 8.5a4.2 4.2 0 0 1 .5 8.4z"/><circle cx="6" cy="21" r="1"/>'],
  ["plans","Plans",'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'],
  ["wishes","Wish list",'<path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7c-2-4-6-4-6-1s6 1 6 1zM12 7c2-4 6-4 6-1s-6 1-6 1z"/>'],
- ["portfolio","Portfolio",'<path d="M3 20h18M6 16l4-5 3 3 5-7"/><path d="M15 7h3v3"/>'],
- ["notes","Notes",'<path d="M5 3h10l4 4v14H5z"/><path d="M14 3v5h5M8 13h8M8 17h5"/>']
+ ["portfolio","Portfolio",'<path d="M3 20h18M6 16l4-5 3 3 5-7"/><path d="M15 7h3v3"/>']
 ];
 const ICON_CHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>';
 const NEXT_LIMIT=5;
@@ -79,7 +80,7 @@ async function sync(){
   const rows=[];
   for(let from=0;;from+=1000){const r=await sb.from("docs").select("collection,id,data").order("collection").order("id").range(from,from+999);
    if(r.error)throw r.error;rows.push(...r.data);if(r.data.length<1000)break}
-  if(!outbox.length){S.items=[];S.holdings=[];S.checkins={};S.pf={};S.snaps={};rows.forEach(r=>applyDoc(r.collection,r.id,r.data));saveLocal();render()}
+  if(!outbox.length){S.items=[];S.holdings=[];S.checkins={};S.pf={};S.snaps={};rows.forEach(r=>applyDoc(r.collection,r.id,r.data));saveLocal();render();tidy()}
   setSync("synced");refreshPrices()
  }catch(e){console.warn("Sync failed:",e);setSync(navigator.onLine?"error":"offline")}
  finally{busy=false;if(!S.loaded){S.loaded=true;render()}if(again){again=false;sync()}}
@@ -87,6 +88,7 @@ async function sync(){
 async function init(){
  S.loaded=local();
  try{outbox=JSON.parse(localStorage.getItem(OUTBOX_KEY)||"[]")}catch(e){outbox=[]}
+ tidy();
  if(!sb){S.mode="local";S.loaded=true;render();return}
  S.mode="db";S.sync=navigator.onLine?"syncing":"offline";render();sync();
  window.addEventListener("online",sync);
@@ -99,6 +101,10 @@ async function init(){
   if(!r||!r.collection||pending(r.collection,r.id))return;
   applyDoc(r.collection,r.id,p.eventType==="DELETE"?null:r.data);saveLocal();render()}).subscribe();
 }
+// Clear out what is no longer used: notes (the Notes tab is gone) and day plans for days that have passed.
+// ASAP priority was removed too: those items become High.
+function tidy(){S.items.filter(x=>x.type==="notes"||(x.type==="dayplan"&&x.date<today())).forEach(x=>del("items",x.id));
+ S.items.filter(x=>x.prio==="asap").forEach(x=>patch(x.id,{prio:"high"}))}
 const item=id=>S.items.find(x=>x.id===id);
 function patch(id,changes){const it=item(id);if(!it)return;const v={...it,...changes};delete v.id;put("items",id,v)}
 
@@ -107,7 +113,6 @@ const of=t=>S.items.filter(x=>x.type===t);
 const byPrio=(a,b)=>(PRANK[a.prio]??2)-(PRANK[b.prio]??2)||((a.due||"9")<(b.due||"9")?-1:(a.due||"9")>(b.due||"9")?1:0)||(a.createdAt||0)-(b.createdAt||0);
 // Next 5 order: priority, then oldest first
 const byPrioAge=(a,b)=>(PRANK[a.prio]??2)-(PRANK[b.prio]??2)||(a.createdAt||0)-(b.createdAt||0);
-function streak(){let d=new Date();if(!S.checkins[key(d)])d=addDays(d,-1);let n=0;while(S.checkins[key(d)]){n++;d=addDays(d,-1)}return n}
 
 /* ---------- render helpers ---------- */
 function prioSeg(name,val){return'<div class="seg" role="group" aria-label="Priority">'+PRIO.map(([k,l])=>'<button type="button" data-act="seg" data-name="'+name+'" data-val="'+k+'" aria-pressed="'+(val===k)+'">'+l+'</button>').join("")+'</div>'}
@@ -118,10 +123,10 @@ function editor(it){
  const t=it.type;let h='<div class="edit">';
  h+='<div class="field"><label for="e-title">Title</label><input type="text" id="e-title" value="'+esc(it.title)+'"></div>';
  if(t==="tasks")h+='<div class="field"><label>Category</label>'+catSeg("e-cat",catOf(it))+'</div>';
- if(t!=="notes"&&t!=="goals")h+='<div class="field"><label>Priority</label>'+prioSeg("e-prio",it.prio||"normal")+'</div>';
+ if(t!=="goals")h+='<div class="field"><label>Priority</label>'+prioSeg("e-prio",it.prio||"normal")+'</div>';
  if(t==="tasks"||t==="plans"||t==="wishes")h+='<div class="field"><label for="e-due">'+(t==="tasks"?"Due":"Target date")+'</label><input type="date" id="e-due" value="'+esc(it.due||"")+'"></div>';
  if(t==="wishes")h+='<div class="frow"><div class="field"><label for="e-price">Price (KD)</label><input type="number" inputmode="decimal" id="e-price" value="'+esc(it.price??"")+'"></div><div class="field"><label for="e-link">Link</label><input type="url" id="e-link" value="'+esc(it.link||"")+'"></div></div>';
- h+='<div class="field"><label for="e-note">'+(t==="goals"?"Why it matters":"Details")+'</label><textarea id="e-note">'+esc(it.note||"")+'</textarea></div>';
+ h+='<div class="field"><label for="e-note">'+(t==="goals"?"Why it matters":"Details")+'</label><textarea id="e-note"'+(t==="plans"?' class="grow"':"")+'>'+esc(it.note||"")+'</textarea></div>';
  h+='<div class="actions"><button class="btn danger" data-act="del" data-id="'+it.id+'">'+(S.confirmDel===it.id?"Tap again to delete":"Delete")+'</button><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="save" data-id="'+it.id+'">Save</button></div></div>';
  return h}
 
@@ -141,48 +146,67 @@ function row(it,opts={}){
   '</div>'+(open?editor(it):"")+'</div>'}
 
 /* ---------- views ---------- */
+// Three numbered slots; delAct is the action behind each ×
+function slotList(L,delAct){return'<div class="slots">'+[0,1,2].map(i=>{const d=L[i];return d?'<div class="slot"><span class="n">'+(i+1)+'</span><span class="t">'+esc(d.t)+'</span><button class="x" data-act="'+delAct+'" data-i="'+i+'" aria-label="Remove">×</button></div>':'<div class="slot empty-slot"><span class="n">'+(i+1)+'</span><span class="t">Empty</span></div>'}).join("")+'</div>'}
 function vToday(){
  const k=today(),ci=S.checkins[k],hr=new Date().getHours();
  const greet=hr<12?"Good morning":hr<17?"Good afternoon":"Good evening";
- let h='<header class="head"><div><div class="eyebrow">'+new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})+'</div><h1>'+greet+', Meshari</h1></div><div class="streak">Streak <b>'+streak()+'</b> '+(streak()===1?"day":"days")+'</div></header>';
+ let h='<header class="head"><div><div class="eyebrow">'+new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})+'</div><h1>'+greet+', Meshari</h1></div></header>';
  if(!ci){
+  // Planned ahead for today: start the check-in with those (once, so removing them sticks)
+  const plan=item(planId(k));
+  if(plan&&!S.draft.length&&S.seeded!==k){S.draft=(plan.focus||[]).slice(0,3).map(x=>({t:x.t,itemId:x.itemId}));S.seeded=k}
   const picked=new Set(S.draft.map(d=>d.itemId).filter(Boolean));
-  const sugg=[...of("tasks"),...of("plans")].filter(x=>!x.done&&(x.prio==="asap"||x.prio==="high"||(x.due&&daysTo(x.due)<=2))).sort(byPrio).slice(0,10);
+  const sugg=[...of("tasks"),...of("plans")].filter(x=>!x.done&&(x.prio==="high"||(x.due&&daysTo(x.due)<=2))).sort(byPrio).slice(0,10);
   h+='<section class="card commit" aria-labelledby="ci-h"><div><div class="eyebrow">Morning check-in</div><h2 id="ci-h">Pick 3 things that make today a win</h2></div>';
-  h+='<div class="slots">'+[0,1,2].map(i=>{const d=S.draft[i];return d?'<div class="slot"><span class="n">'+(i+1)+'</span><span class="t">'+esc(d.t)+'</span><button class="x" data-act="undraft" data-i="'+i+'" aria-label="Remove">×</button></div>':'<div class="slot empty-slot"><span class="n">'+(i+1)+'</span><span class="t">Empty</span></div>'}).join("")+'</div>';
+  if(plan&&S.seeded===k&&S.draft.length)h+='<p class="hint">Filled in from your plan. Change anything, then commit.</p>';
+  h+=slotList(S.draft,"undraft");
   if(S.draft.length<3){
    if(sugg.length)h+='<div class="field"><label>From your lists</label><div class="chips">'+sugg.map(x=>'<button class="chip" data-act="draft" data-id="'+x.id+'"'+(picked.has(x.id)?" disabled":"")+'>'+esc(x.title)+'</button>').join("")+'</div></div>';
    h+='<div class="frow"><div class="field" style="flex:3 1 200px"><label for="ci-add">Or type one</label><input type="text" id="ci-add" placeholder="e.g. Send forms review to GM"></div><button class="btn ghost" data-act="draftText" style="flex:0 0 auto;align-self:flex-end">Add</button></div>';
   }
-  h+='<div class="field"><label for="ci-int">One line: what would make today count?</label><input type="text" id="ci-int" placeholder="e.g. Finish before lunch, family time after 6"></div>';
   h+='<button class="btn brick" data-act="commit"'+(S.draft.length?"":" disabled")+'>Commit to today</button></section>';
  }else{
   const f=ci.focus||[],n=f.filter(x=>x.done).length;
   h+='<section class="card commit" aria-labelledby="cm-h"><div class="section-h"><div><div class="eyebrow">Today\'s commitment</div><h2 id="cm-h">'+(n===f.length&&f.length?"All done. Well kept.":n+" of "+f.length+" done")+'</h2></div><button class="btn ghost" data-act="recommit" style="padding:6px 10px;font-size:13px">Change</button></div>';
   h+='<div class="progress" aria-hidden="true"><i style="width:'+(f.length?n/f.length*100:0)+'%"></i></div>';
-  if(ci.intention)h+='<p class="intent" style="margin:0">'+esc(ci.intention)+'</p>';
   h+='<div class="slots">'+f.map((x,i)=>'<div class="slot'+(x.done?" done":"")+'"><button class="check'+(x.done?" on":"")+'" data-act="focusToggle" data-i="'+i+'" aria-label="Toggle">'+(x.done?ICON_CHECK:"")+'</button><span class="t">'+esc(x.t)+'</span></div>').join("")+'</div>';
   h+='<div class="field"><label for="ci-ref">Evening close: what worked, what got in the way?</label><input type="text" id="ci-ref" value="'+esc(ci.reflection||"")+'"></div><div class="actions"><button class="btn ghost" data-act="reflect">Save note</button></div></section>';
  }
- // week
- const w=[];for(let i=6;i>=0;i--){const d=addDays(new Date(),-i),kk=key(d),c=S.checkins[kk];const f=c?.focus||[];const full=c&&f.length&&f.every(x=>x.done);
-  w.push('<div class="day"><span>'+d.toLocaleDateString("en-GB",{weekday:"narrow"})+'</span><span class="dot'+(full?" full":c?" in":"")+(i===0?" today":"")+'">'+(c?f.filter(x=>x.done).length:"")+'</span></div>')}
- h+='<section class="section"><div class="section-h"><h3>Last 7 days</h3><span class="muted" style="font-size:12.5px">filled = checked in, green = all 3 done</span></div><div class="week">'+w.join("")+'</div></section>';
- const asap=of("tasks").filter(x=>!x.done&&x.prio==="asap").sort(byPrio);
- h+='<section class="section"><div class="section-h"><h3 style="color:var(--brick)">Must do ASAP</h3><span class="mono muted">'+asap.length+'</span></div>'+(asap.length?'<div class="list">'+asap.map(x=>row(x,{cat:true,noPill:true})).join("")+'</div>':'<div class="empty">Nothing marked ASAP.</div>')+'</section>';
- const soon=dated().filter(x=>daysTo(x.due)<=7&&!(x.type==="tasks"&&x.prio==="asap"));
- if(soon.length)h+='<section class="section"><div class="section-h"><h3>Coming up this week</h3><button class="linkbtn" data-act="tab" data-tab="timeline">Full timeline →</button></div><div class="tl">'+soon.slice(0,6).map(tlRow).join("")+'</div></section>';
- const pinned=of("notes").filter(x=>x.pinned);
- if(pinned.length)h+='<section class="section"><h3>Remember</h3>'+pinned.map(x=>'<div class="card"><div class="note">'+esc(x.title)+(x.note?"\n"+esc(x.note):"")+'</div></div>').join("")+'</section>';
+ h+=planAhead();
+ h+=timeline();
  return h}
+
+/* Plan ahead: up to 3 things for any of the next 7 days. Saved as an item {type:"dayplan", date, focus}
+   with id "dp-<date>"; on that morning they fill the check-in. */
+const planId=d=>"dp-"+d;
+const planOf=d=>(item(planId(d))?.focus||[]).slice();
+function setPlan(d,focus){if(focus.length)put("items",planId(d),{type:"dayplan",date:d,focus});else del("items",planId(d))}
+function planAhead(){
+ const days=[1,2,3,4,5,6,7].map(i=>key(addDays(new Date(),i)));
+ if(!days.includes(S.planDay))S.planDay=days[0];
+ const sel=S.planDay,f=planOf(sel),picked=new Set(f.map(x=>x.itemId).filter(Boolean));
+ const n=days.filter(d=>planOf(d).length).length;
+ let h='<section class="section"><div class="section-h"><div><h3>Plan ahead</h3><span class="muted" style="font-size:12.5px">'+(n?n+" of the next 7 days planned":"3 things for any of the next 7 days")+'</span></div><button class="linkbtn" data-act="planOpen" aria-expanded="'+!!S.planOpen+'">'+(S.planOpen?"Hide ↑":"Plan ↓")+'</button></div>';
+ if(!S.planOpen)return h+'</section>';
+ h+='<div class="card">';
+ h+='<div class="week" role="group" aria-label="Day to plan">'+days.map(d=>{const n=planOf(d).length,dt=parse(d);
+  return'<button class="day daybtn" data-act="planDay" data-day="'+d+'" aria-pressed="'+(d===sel)+'" aria-label="'+dt.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})+', '+n+' planned"><span>'+dt.toLocaleDateString("en-GB",{weekday:"narrow"})+'</span><span class="dot'+(n>=3?" full":n?" in":"")+'">'+dt.getDate()+'</span></button>'}).join("")+'</div>';
+ h+='<div class="eyebrow">'+parse(sel).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"short"})+'</div>'+slotList(f,"planDel");
+ if(f.length<3){
+  const sugg=[...of("tasks"),...of("plans")].filter(x=>!x.done&&!picked.has(x.id)&&(x.prio==="high"||(x.due&&x.due<=sel))).sort(byPrio).slice(0,8);
+  if(sugg.length)h+='<div class="field"><label>From your lists</label><div class="chips">'+sugg.map(x=>'<button class="chip" data-act="planPick" data-id="'+x.id+'">'+esc(x.title)+'</button>').join("")+'</div></div>';
+  h+='<div class="frow"><div class="field" style="flex:3 1 200px"><label for="pl-add">Or type one</label><input type="text" id="pl-add" placeholder="e.g. Call the bank"></div><button class="btn ghost" data-act="planAdd" style="flex:0 0 auto;align-self:flex-end">Add</button></div>';
+ }
+ return h+'</div></section>'}
 
 // Round + button in a page header: opens that page's add box, and turns into × to close it
 function addToggle(key){const on=S.adding===key;
  return'<button class="addbtn'+(on?' on':'')+'" data-act="addToggle" data-key="'+key+'" aria-label="'+(on?"Close":"Add")+'" aria-expanded="'+on+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'+(on?'<path d="M6 6l12 12M18 6L6 18"/>':'<path d="M12 5v14M5 12h14"/>')+'</svg></button>'}
 function quickAdd(type){
  if(S.adding!==type)return"";
- let h='<section class="card"><div class="field"><label for="q-title">'+({tasks:"New task",goals:"New priority",plans:"New plan",wishes:"Add to wish list",notes:"New note"})[type]+'</label>';
- h+=type==="notes"?'<textarea id="q-title" placeholder="Something to remember"></textarea>':'<input type="text" id="q-title" placeholder="'+({tasks:"What needs doing?",goals:"e.g. Family stability first",plans:"e.g. Classic Porsche import",wishes:"e.g. Outdoor jacket"})[type]+'">';
+ let h='<section class="card"><div class="field"><label for="q-title">'+({tasks:"New task",goals:"New priority",plans:"New plan",wishes:"Add to wish list"})[type]+'</label>';
+ h+='<input type="text" id="q-title" placeholder="'+({tasks:"What needs doing?",goals:"e.g. Family stability first",plans:"e.g. Classic Porsche import",wishes:"e.g. Outdoor jacket"})[type]+'">';
  h+='</div>';
  if(type==="tasks")h+=catSeg("addCat",S.addCat);
  if(type==="tasks"||type==="plans"||type==="wishes")h+=prioSeg("addPrio",S.addPrio);
@@ -201,16 +225,26 @@ function tlRow(x){const n=daysTo(x.due),d=parse(x.due),late=n<0;
  return'<div class="tl-row'+(late?" late":"")+'"><div class="tl-date"><b>'+d.getDate()+'</b><span>'+d.toLocaleDateString("en-GB",{month:"short"})+'</span></div>'+
   '<button class="row-main" data-act="goto" data-id="'+x.id+'"><span class="row-title">'+esc(x.title)+'</span><span class="row-meta"><span class="src s-'+x.type+'">'+SRC[x.type]+'</span>'+(x.type==="tasks"?catOf(x):"")+(x.prio&&x.type!=="mind"?" "+pill(x.prio):"")+'<span>'+lab+d.toLocaleDateString("en-GB",{weekday:"short"})+'</span></span></button>'+
   '<span class="tl-left'+(late?" late":"")+'">'+left+'</span></div>'}
+// Today's "Coming up this week", which expands into the full timeline: everything open with a date, grouped.
+const TL_GROUPS=[["Overdue",x=>daysTo(x.due)<0],["Today",x=>daysTo(x.due)===0],["Tomorrow",x=>daysTo(x.due)===1],["Next 7 days",x=>{const n=daysTo(x.due);return n>=2&&n<=7}],["Next 30 days",x=>{const n=daysTo(x.due);return n>7&&n<=30}],["Later",x=>daysTo(x.due)>30]];
+const undatedHint=()=>{const n=S.items.filter(x=>SRC[x.type]&&!x.done&&!x.due).length;return n?'<p class="hint">'+n+' open items have no date, so they don\'t show here. Give a date to anything that has a real deadline.</p>':""};
+function timeline(){
+ const all=dated();if(!all.length)return"";
+ const full=!!S.tlFull;
+ let h='<section class="section"><div class="section-h"><h3>'+(full?"Full timeline":"Coming up this week")+'</h3><button class="linkbtn" data-act="tlFull" aria-expanded="'+full+'">'+(full?"Show less ↑":"Full timeline ↓")+'</button></div>';
+ if(!full){const soon=all.filter(x=>daysTo(x.due)<=7);
+  return h+(soon.length?'<div class="tl">'+soon.slice(0,6).map(tlRow).join("")+'</div>':'<div class="empty">Nothing due in the next 7 days.</div>')+'</section>'}
+ TL_GROUPS.forEach(([g,f])=>{const L=all.filter(f);if(!L.length)return;
+  h+='<div class="section-h tl-g"><h4'+(g==="Overdue"?' style="color:var(--brick)"':"")+'>'+g+'</h4><span class="mono muted">'+L.length+'</span></div><div class="tl">'+L.map(tlRow).join("")+'</div>'});
+ return h+undatedHint()+'</section>'}
+// Timeline as a full page (shown in place of Today while TEST_TIMELINE is on)
 function vTimeline(){
- const all=dated(),undated=S.items.filter(x=>SRC[x.type]&&!x.done&&!x.due).length;
- const groups=[["Overdue",x=>daysTo(x.due)<0],["Today",x=>daysTo(x.due)===0],["Tomorrow",x=>daysTo(x.due)===1],["Next 7 days",x=>{const n=daysTo(x.due);return n>=2&&n<=7}],["Next 30 days",x=>{const n=daysTo(x.due);return n>7&&n<=30}],["Later",x=>daysTo(x.due)>30]];
- const soon=all.filter(x=>daysTo(x.due)<=7).length;
+ const all=dated(),soon=all.filter(x=>daysTo(x.due)<=7).length;
  let h='<header class="head"><div><div class="eyebrow">Everything with a date</div><h1>Timeline</h1></div><div class="mono muted">'+soon+' in the next 7 days</div></header>';
  if(!all.length)h+='<div class="empty">Nothing dated yet. Add a due or target date to tasks, plans, wishes or On my mind items and they appear here in order.</div>';
- groups.forEach(([g,f])=>{const L=all.filter(f);if(!L.length)return;
+ TL_GROUPS.forEach(([g,f])=>{const L=all.filter(f);if(!L.length)return;
   h+='<section class="section"><div class="section-h"><h3'+(g==="Overdue"?' style="color:var(--brick)"':"")+'>'+g+'</h3><span class="mono muted">'+L.length+'</span></div><div class="tl">'+L.map(tlRow).join("")+'</div></section>'});
- if(undated)h+='<p class="hint">'+undated+' open items have no date, so they don\'t show here. Give a date to anything that has a real deadline.</p>';
- return h}
+ return h+undatedHint()}
 
 function vTasks(){
  const t=of("tasks"),open=t.filter(x=>!x.done).sort(byPrio),ws=weekStart();
@@ -221,23 +255,23 @@ function vTasks(){
  h+='<section class="section"><div class="section-h"><h3 style="color:var(--brick)">★ Next 5 to do</h3><span class="mono muted">'+next.length+'/'+NEXT_LIMIT+'</span></div>'+
   (S.nextFull?'<div class="notice" role="status">Next 5 is full — finish or unstar one first.</div>':"")+
   (next.length?'<div class="list">'+next.map(x=>row(x,{cat:true})).join("")+'</div>':'<div class="empty next-empty">Tap ☆ on any task to line up your next five.</div>')+'</section>';
- const asap=rest.filter(x=>x.prio==="asap");
- h+='<section class="section"><div class="section-h"><h3 style="color:var(--brick)">Must do ASAP</h3><span class="mono muted">'+asap.length+'</span></div>'+(asap.length?'<div class="list">'+asap.map(x=>row(x,{cat:true,noPill:true})).join("")+'</div>':'<div class="empty">Nothing marked ASAP.</div>')+'</section>';
- CATS.forEach(c=>{const l=rest.filter(x=>x.prio!=="asap"&&catOf(x)===c);
+ CATS.forEach(c=>{const l=rest.filter(x=>catOf(x)===c);
   h+='<section class="section"><div class="section-h"><h3>'+c+'</h3><span class="mono muted">'+l.length+'</span></div>'+(l.length?'<div class="list">'+l.map(x=>row(x)).join("")+'</div>':'<div class="empty">No open tasks.</div>')+'</section>'});
  h+='<section class="section"><div class="section-h"><h3 class="muted">Done this week</h3><span class="mono muted">'+doneW.length+'</span></div>'+(doneW.length?'<div class="list">'+doneW.map(x=>row(x,{cat:true,noPill:true})).join("")+'</div>':'<div class="empty">Ticked tasks land here until Saturday night.</div>')+'</section>';
  return h}
 
-const KINDS=[["decide","Decide","A choice you're stuck on. Name the missing fact and set a deadline."],["act","Act","The path is clear. Turn the next step into a task."],["wait","Waiting","Out of your hands for now. Parked until the check-back date."]];
-const NEXT_LABEL={decide:"Missing fact",act:"Next step",wait:"Waiting on"};
-const DATE_LABEL={decide:"Decide by",act:"Start by",wait:"Check back on"};
+// Each loop's status. The saved keys are older than the names: decide = Thinking, act = Decided, wait = Waiting.
+const KINDS=[["decide","Thinking","Not decided yet. Name what's missing and set a decide-by date."],["act","Decided","Decided, with an action still to take. Make it a task or mark it done."],["wait","Waiting","Waiting for something to happen. Parked until the check-back date."]];
+const NEXT_LABEL={decide:"What's missing",act:"Action to take",wait:"Waiting on"};
+const NEXT_EMPTY={decide:"Name what's missing",act:"Add the action to take",wait:"Add what you're waiting on"};
+const DATE_LABEL={decide:"Decide by",act:"Act by",wait:"Check back on"};
 function wtBar(w){w=w||1;return'<span class="wt" aria-label="Weight '+w+' of 5">'+[1,2,3,4,5].map(i=>'<i class="'+(i<=w?"on":"")+'"></i>').join("")+'</span>'}
 function wtSeg(name,v){return'<div class="seg" role="group" aria-label="Weight">'+[1,2,3,4,5].map(i=>'<button type="button" data-act="seg" data-name="'+name+'" data-val="'+i+'" aria-pressed="'+(String(v)===String(i))+'">'+i+'</button>').join("")+'</div>'}
-function kindSeg(name,v){return'<div class="seg" role="group" aria-label="Type">'+KINDS.map(([k,l])=>'<button type="button" data-act="seg" data-name="'+name+'" data-val="'+k+'" aria-pressed="'+(v===k)+'">'+l+'</button>').join("")+'</div>'}
+function kindSeg(name,v){return'<div class="seg" role="group" aria-label="Status">'+KINDS.map(([k,l])=>'<button type="button" data-act="seg" data-name="'+name+'" data-val="'+k+'" aria-pressed="'+(v===k)+'">'+l+'</button>').join("")+'</div>'}
 const parked=x=>x.kind==="wait"&&x.due&&daysTo(x.due)>0;
 function mindEditor(x){
  return'<div class="edit"><div class="field"><label for="m-title">What\'s on your mind</label><input type="text" id="m-title" value="'+esc(x.title)+'"></div>'+
- '<div class="field"><label>Type</label>'+kindSeg("m-kind",x.kind)+'</div>'+
+ '<div class="field"><label>Status</label>'+kindSeg("m-kind",x.kind)+'</div>'+
  '<div class="field"><label>Weight: how much headspace it takes</label>'+wtSeg("m-wt",x.weight||3)+'</div>'+
  '<div class="field"><label for="m-next">'+NEXT_LABEL[x.kind||"act"]+'</label><input type="text" id="m-next" value="'+esc(x.next||"")+'"></div>'+
  '<div class="field"><label for="m-due">'+DATE_LABEL[x.kind||"act"]+'</label><input type="date" id="m-due" value="'+esc(x.due||"")+'"></div>'+
@@ -247,11 +281,12 @@ function mindRow(x){
  let meta=[];if(x.due)meta.push(DATE_LABEL[x.kind]+" "+dueLabel(x.due));
  if(stale)meta.push('<span class="flag">Stuck 3+ weeks: decide, delegate or drop</span>');
  let h='<div class="row k-'+esc(x.kind)+'"><div class="row-top"><button class="row-main" data-act="open" data-id="'+x.id+'" aria-expanded="'+open+'"><span class="row-title">'+esc(x.title)+'</span>'+
-  (x.next?'<span class="nextline"><em>'+NEXT_LABEL[x.kind]+'</em>'+esc(x.next)+'</span>':'<span class="row-meta"><span class="flag">No '+NEXT_LABEL[x.kind].toLowerCase()+' yet</span></span>')+
+  (x.next?'<span class="nextline"><em>'+NEXT_LABEL[x.kind]+'</em>'+esc(x.next)+'</span>':'<span class="row-meta"><span class="flag">'+NEXT_EMPTY[x.kind]+'</span></span>')+
   (meta.length?'<span class="row-meta">'+meta.join(" · ")+'</span>':"")+'</button>'+wtBar(x.weight)+'</div>';
  if(!open){const btns=[];
+  if(x.kind==="decide")btns.push('<button class="linkbtn" data-act="mdecided" data-id="'+x.id+'">Decided →</button>');
   if(x.kind==="act"&&x.next)btns.push('<button class="linkbtn" data-act="mtask" data-id="'+x.id+'">Make it a task →</button>');
-  btns.push('<button class="linkbtn" data-act="mresolve" data-id="'+x.id+'" style="color:var(--ok)">'+(x.kind==="decide"?"Decided":"Resolved")+'</button>');
+  if(x.kind!=="decide")btns.push('<button class="linkbtn" data-act="mresolve" data-id="'+x.id+'" style="color:var(--ok)">Done</button>');
   h+='<div style="display:flex;gap:16px;justify-content:flex-end;padding:0 12px 8px">'+btns.join("")+'</div>'}
  return h+(open?mindEditor(x):"")+'</div>'}
 function vGoals(){
@@ -265,7 +300,7 @@ function vGoals(){
  KINDS.forEach(([k,l,desc])=>{const L=visible.filter(x=>x.kind===k).sort((a,b)=>(b.weight||0)-(a.weight||0)||((a.due||"9")<(b.due||"9")?-1:(a.due||"9")>(b.due||"9")?1:0));
   h+='<section class="section"><div class="kind-h"><div><h3>'+l+'</h3><p>'+desc+'</p></div><span class="mono muted">'+L.length+'</span></div>'+(L.length?'<div class="list">'+L.map(mindRow).join("")+'</div>':'<div class="empty">Nothing here.</div>')+'</section>'});
  if(hidden.length){h+='<section class="section"><button class="linkbtn" data-act="mparked">'+(S.showParked?"Hide":"Show")+' '+hidden.length+' parked until their check-back date</button>'+(S.showParked?'<div class="list">'+hidden.sort((a,b)=>a.due<b.due?-1:1).map(mindRow).join("")+'</div>':"")+'</section>'}
- h+='<section class="section"><div class="section-h"><h3 class="muted">Closed this week</h3><span class="mono muted">'+closed.length+'</span></div>'+(closed.length?'<div class="list">'+closed.map(x=>'<div class="row done"><div class="row-top"><span class="row-main"><span class="row-title">'+esc(x.title)+'</span><span class="row-meta">'+esc(x.closedAs||"Resolved")+'</span></span><button class="linkbtn" data-act="mreopen" data-id="'+x.id+'">Reopen</button></div></div>').join("")+'</div>':'<div class="empty">Loops you close land here. Each one is headspace back.</div>')+'</section>';
+ h+='<section class="section"><div class="section-h"><h3 class="muted">Closed this week</h3><span class="mono muted">'+closed.length+'</span></div>'+(closed.length?'<div class="list">'+closed.map(x=>'<div class="row done"><div class="row-top"><span class="row-main"><span class="row-title">'+esc(x.title)+'</span><span class="row-meta">'+esc(x.closedAs||"Done")+'</span></span><button class="linkbtn" data-act="mreopen" data-id="'+x.id+'">Reopen</button></div></div>').join("")+'</div>':'<div class="empty">Loops you close land here. Each one is headspace back.</div>')+'</section>';
  h+='<p class="hint">Weekly review: re-score each weight and check anything flagged as stuck.</p>';
  return h}
 
@@ -282,12 +317,6 @@ function vWishes(){
  let h='<header class="head"><div><div class="eyebrow">'+open.length+' items</div><h1>Wish list</h1></div><div class="head-r">'+(total?'<div class="total">'+total.toLocaleString("en-GB",{maximumFractionDigits:3})+' KD priced</div>':"")+addToggle("wishes")+'</div></header>'+quickAdd("wishes");
  h+=open.length?'<div class="list">'+open.map(x=>row(x)).join("")+'</div>':'<div class="empty">Nothing on the list yet.</div>';
  if(got.length)h+='<section class="section"><h3 class="muted">Got it</h3><div class="list">'+got.map(x=>row(x,{noPill:true})).join("")+'</div></section>';
- return h}
-
-function vNotes(){
- const n=of("notes").sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||(b.createdAt||0)-(a.createdAt||0));
- let h='<header class="head"><div><div class="eyebrow">Pinned notes show on Today</div><h1>Notes</h1></div>'+addToggle("notes")+'</header>'+quickAdd("notes");
- h+=n.length?'<div class="list">'+n.map(x=>{const open=S.open===x.id;return'<div class="row p-'+(x.pinned?"asap":"low")+'"><div class="row-top"><button class="row-main" data-act="open" data-id="'+x.id+'"><span class="row-title note">'+esc(x.title)+'</span>'+(x.note?'<span class="row-meta note">'+esc(x.note)+'</span>':"")+'<span class="row-meta">'+new Date(x.createdAt||Date.now()).toLocaleDateString("en-GB",{day:"numeric",month:"short"})+'</span></button><button class="btn ghost" style="padding:5px 10px;font-size:12.5px;flex:none" data-act="pin" data-id="'+x.id+'">'+(x.pinned?"Unpin":"Pin")+'</button></div>'+(open?editor(x):"")+'</div>'}).join("")+'</div>':'<div class="empty">Thoughts, reminders, things you don\'t want to lose.</div>';
  return h}
 
 /* ---------- portfolio ---------- */
@@ -490,16 +519,19 @@ function render(){
  if(S.err)h+='<div class="notice">'+esc(S.err)+'</div>';
  if(!S.loaded)h+='<p class="muted">Loading your board…</p>';
  else if(S.panel==="import")h+=vImport();
- else h+=({today:vToday,timeline:vTimeline,tasks:vTasks,goals:vGoals,plans:vPlans,wishes:vWishes,notes:vNotes,portfolio:vPortfolio})[S.tab]();
+ else h+=({today:TEST_TIMELINE?vTimeline:vToday,tasks:vTasks,goals:vGoals,plans:vPlans,wishes:vWishes,portfolio:vPortfolio})[S.tab]();
  if(S.loaded)h+=footer();
  app.innerHTML=h;
  if(!S.fresh)for(const id in keep){const el=document.getElementById(id);if(el)el.value=keep[id]}
  S.fresh=false;
+ app.querySelectorAll("textarea.grow").forEach(grow);
  if(act){const el=document.getElementById(act);if(el)el.focus()}
  if(S.tab==="portfolio")bindChart();
- const c=of("tasks").filter(x=>!x.done&&x.prio==="asap").length,tc=dated().filter(x=>daysTo(x.due)<=0).length;
- document.getElementById("tabs").innerHTML=TABS.map(([k,l,svg])=>'<button class="tab" data-act="tab" data-tab="'+k+'"'+(S.tab===k?' aria-current="page"':"")+'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+svg+'</svg>'+l+(k==="tasks"&&c?' <span class="badge">'+c+'</span>':k==="timeline"&&tc?' <span class="badge">'+tc+'</span>':"")+'</button>').join("");
+ document.getElementById("tabs").innerHTML=TABS.map(([k,l,svg])=>'<button class="tab" data-act="tab" data-tab="'+k+'"'+(S.tab===k?' aria-current="page"':"")+'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+svg+'</svg>'+l+'</button>').join("");
 }
+// Plan details: the box grows with the text instead of scrolling inside it
+function grow(el){el.style.height="auto";el.style.height=el.scrollHeight+2+"px"}
+document.addEventListener("input",e=>{if(e.target.matches("textarea.grow"))grow(e.target)});
 const val=id=>{const el=document.getElementById(id);return el?el.value.trim():""};
 const clear=(...ids)=>ids.forEach(id=>{const el=document.getElementById(id);if(el)el.value=""});
 const segVal=name=>{const b=document.querySelector('[data-name="'+name+'"][aria-pressed="true"]');return b?b.dataset.val:null};
@@ -533,14 +565,12 @@ async function act(a,d){
   if(!confirm(n?n+" change(s) haven't synced yet and will be lost. Sign out anyway?":"Sign out on this device?"))return;
   try{[CACHE_KEY,OUTBOX_KEY,"dc-last-user"].forEach(k=>localStorage.removeItem(k))}catch(e){}
   await sb.auth.signOut();location.reload();break}
- case"pin":{const it=item(d.id);if(it)patch(d.id,{pinned:!it.pinned});break}
  case"add":{const t=d.type,title=val("q-title");if(!title){document.getElementById("q-title").focus();return}
   const v={type:t,title,createdAt:Date.now(),done:false};
   if(t==="tasks"){v.cat=S.addCat;v.prio=S.addPrio;v.due=val("q-due")}
   if(t==="plans"){v.prio=S.addPrio;v.due=val("q-due")}
   if(t==="wishes"){v.prio=S.addPrio;v.price=val("q-price");v.link=val("q-link");v.due=val("q-due")}
   if(t==="goals"){v.note=val("q-note");v.rank=of("goals").reduce((m,x)=>Math.max(m,x.rank??0),0)+1}
-  if(t==="notes")v.pinned=false;
   clear("q-title","q-due","q-price","q-link","q-note");S.addPrio="normal";
   await put("items",uid(),v);break}
  case"save":{const it=item(d.id);if(!it)return;const ch={title:val("e-title")||it.title,note:val("e-note")};
@@ -555,8 +585,14 @@ async function act(a,d){
  case"draft":{const it=item(d.id);if(it&&S.draft.length<3){S.draft.push({t:it.title,itemId:it.id});render()}break}
  case"draftText":{const t=val("ci-add");if(t&&S.draft.length<3){clear("ci-add");S.draft.push({t,itemId:null});render()}break}
  case"undraft":S.draft.splice(Number(d.i),1);render();break;
- case"commit":{if(!S.draft.length)return;const k=today();const v={date:k,focus:S.draft.map(x=>({t:x.t,itemId:x.itemId,done:false})),intention:val("ci-int"),at:Date.now()};clear("ci-int");S.draft=[];await put("checkins",k,v);break}
- case"recommit":{const c=S.checkins[today()];if(!c)return;S.draft=(c.focus||[]).map(x=>({t:x.t,itemId:x.itemId}));await del("checkins",today());setTimeout(()=>{const el=document.getElementById("ci-int");if(el&&c.intention)el.value=c.intention},50);break}
+ case"commit":{if(!S.draft.length)return;const k=today();const v={date:k,focus:S.draft.map(x=>({t:x.t,itemId:x.itemId,done:false})),at:Date.now()};S.draft=[];await put("checkins",k,v);if(item(planId(k)))del("items",planId(k));break}
+ case"planDay":S.fresh=true;S.planDay=d.day;render();break;
+ case"planPick":{const it=item(d.id),f=planOf(S.planDay);if(it&&f.length<3){f.push({t:it.title,itemId:it.id});setPlan(S.planDay,f)}break}
+ case"planAdd":{const t=val("pl-add"),f=planOf(S.planDay);if(t&&f.length<3){clear("pl-add");f.push({t,itemId:null});setPlan(S.planDay,f)}break}
+ case"planDel":{const f=planOf(S.planDay);f.splice(Number(d.i),1);setPlan(S.planDay,f);break}
+ case"planOpen":S.planOpen=!S.planOpen;render();break;
+ case"tlFull":S.tlFull=!S.tlFull;render();break;
+ case"recommit":{const c=S.checkins[today()];if(!c)return;S.draft=(c.focus||[]).map(x=>({t:x.t,itemId:x.itemId}));await del("checkins",today());break}
  case"focusToggle":{const k=today(),c=S.checkins[k];if(!c)return;const f=(c.focus||[]).map(x=>({...x}));const x=f[Number(d.i)];x.done=!x.done;
   await put("checkins",k,{...c,focus:f});if(x.itemId&&item(x.itemId))patch(x.itemId,x.done?{done:true,doneAt:Date.now(),star:false}:{done:false,doneAt:null});break}
  case"fx":{const r=num(val("fx-rate"));if(!r||r<=0){S.err="Enter the rate as KWD per 1 USD, for example 0.307.";render();return}await put("pf","fx",{usdkwd:r,at:Date.now()});snapshot();break}
@@ -586,7 +622,9 @@ async function act(a,d){
  case"madd":{const t=val("m-new");if(!t){document.getElementById("m-new").focus();return}clear("m-new");
   await put("items",uid(),{type:"mind",title:t,kind:S.addKind,weight:S.addWt,next:"",due:"",done:false,createdAt:Date.now(),updatedAt:Date.now()});break}
  case"msave":{const x=item(d.id);if(!x)return;S.open=null;patch(d.id,{title:val("m-title")||x.title,kind:segVal("m-kind")||x.kind,weight:Number(segVal("m-wt")||x.weight||3),next:val("m-next"),due:val("m-due"),updatedAt:Date.now()});break}
- case"mresolve":{const x=item(d.id);if(x)patch(d.id,{done:true,doneAt:Date.now(),closedAs:x.kind==="decide"?"Decided":"Resolved"});break}
+ case"mresolve":patch(d.id,{done:true,doneAt:Date.now(),closedAs:"Done"});break;
+ // Thinking → Decided: the decide-by date and what was missing no longer apply, so open it to fill in the action
+ case"mdecided":S.fresh=true;S.open=d.id;S.confirmDel=null;patch(d.id,{kind:"act",next:"",due:"",updatedAt:Date.now()});setTimeout(()=>{const el=document.getElementById("m-next");if(el)el.focus()},30);break;
  case"mreopen":patch(d.id,{done:false,doneAt:null,updatedAt:Date.now()});break;
  case"mtask":{const x=item(d.id);if(!x||!x.next)return;await put("items",uid(),{type:"tasks",title:x.next,note:"From: "+x.title,cat:"Personal",prio:(x.weight||0)>=4?"high":"normal",due:x.due||"",done:false,createdAt:Date.now()});
   patch(d.id,{done:true,doneAt:Date.now(),closedAs:"Moved to To-do"});break}
@@ -598,6 +636,7 @@ document.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(
 document.addEventListener("keydown",e=>{if(e.key!=="Enter"||e.shiftKey)return;const id=e.target.id;
  if(id==="q-title"&&e.target.tagName==="INPUT"){e.preventDefault();act("add",{type:S.tab})}
  else if(id==="ci-add"){e.preventDefault();act("draftText",{})}
+ else if(id==="pl-add"){e.preventDefault();act("planAdd",{})}
  else if(id==="m-new"){e.preventDefault();act("madd",{})}});
 // roll over at midnight if the page stays open
 let day=today();setInterval(()=>{if(today()!==day){day=today();S.draft=[];render()}},60000);
