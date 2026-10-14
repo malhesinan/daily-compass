@@ -262,6 +262,7 @@ function vTasks(){
 
 // Each loop's status. The saved keys are older than the names: decide = Thinking, act = Decided, wait = Waiting.
 const KINDS=[["decide","Thinking","Not decided yet. Name what's missing and set a decide-by date."],["act","Decided","Decided, with an action still to take. Make it a task or mark it done."],["wait","Waiting","Waiting for something to happen. Parked until the check-back date."]];
+const KIND_LABEL=Object.fromEntries(KINDS.map(([k,l])=>[k,l]));
 const NEXT_LABEL={decide:"What's missing",act:"Action to take",wait:"Waiting on"};
 const NEXT_EMPTY={decide:"Name what's missing",act:"Add the action to take",wait:"Add what you're waiting on"};
 const DATE_LABEL={decide:"Decide by",act:"Act by",wait:"Check back on"};
@@ -282,7 +283,7 @@ function mindRow(x){
  if(stale)meta.push('<span class="flag">Stuck 3+ weeks: decide, delegate or drop</span>');
  let h='<div class="row k-'+esc(x.kind)+'"><div class="row-top"><button class="row-main" data-act="open" data-id="'+x.id+'" aria-expanded="'+open+'"><span class="row-title">'+esc(x.title)+'</span>'+
   (x.next?'<span class="nextline"><em>'+NEXT_LABEL[x.kind]+'</em>'+esc(x.next)+'</span>':'<span class="row-meta"><span class="flag">'+NEXT_EMPTY[x.kind]+'</span></span>')+
-  (meta.length?'<span class="row-meta">'+meta.join(" · ")+'</span>':"")+'</button>'+wtBar(x.weight)+'</div>';
+  (meta.length?'<span class="row-meta">'+meta.join(" · ")+'</span>':"")+'</button><div class="row-side"><span class="ktag k-'+esc(x.kind)+'">'+KIND_LABEL[x.kind]+'</span>'+wtBar(x.weight)+'</div></div>';
  if(!open){const btns=[];
   if(x.kind==="decide")btns.push('<button class="linkbtn" data-act="mdecided" data-id="'+x.id+'">Decided →</button>');
   if(x.kind==="act"&&x.next)btns.push('<button class="linkbtn" data-act="mtask" data-id="'+x.id+'">Make it a task →</button>');
@@ -297,8 +298,9 @@ function vGoals(){
  let h='<header class="head"><div><div class="eyebrow">Open loops</div><h1>On my mind</h1></div><div class="head-r"><div class="load"><span class="eyebrow">Mental load</span><span class="big">'+load+'</span><span class="mono muted">/ '+(visible.length*5||35)+'</span></div>'+addToggle("mind")+'</div></header>';
  if(visible.length>7)h+='<div class="notice">'+visible.length+' active loops. Keep it to 7: move clear actions to To-do and bigger projects to Plans.</div>';
  if(S.adding==="mind")h+='<section class="card"><div class="field"><label for="m-new">Brain dump</label><input type="text" id="m-new" placeholder="What keeps coming back to you?"></div>'+kindSeg("addKind",S.addKind)+'<div class="field"><label>Weight</label>'+wtSeg("addWt",S.addWt)+'</div><div class="actions"><button class="btn" data-act="madd">Add</button></div></section>';
- KINDS.forEach(([k,l,desc])=>{const L=visible.filter(x=>x.kind===k).sort((a,b)=>(b.weight||0)-(a.weight||0)||((a.due||"9")<(b.due||"9")?-1:(a.due||"9")>(b.due||"9")?1:0));
-  h+='<section class="section"><div class="kind-h"><div><h3>'+l+'</h3><p>'+desc+'</p></div><span class="mono muted">'+L.length+'</span></div>'+(L.length?'<div class="list">'+L.map(mindRow).join("")+'</div>':'<div class="empty">Nothing here.</div>')+'</section>'});
+ // One list, heaviest first; each row shows its status above the weight bar
+ const L=visible.sort((a,b)=>(b.weight||0)-(a.weight||0)||((a.due||"9")<(b.due||"9")?-1:(a.due||"9")>(b.due||"9")?1:0));
+ h+='<section class="section">'+(L.length?'<div class="list">'+L.map(mindRow).join("")+'</div>':'<div class="empty">Nothing on your mind.</div>')+'</section>';
  if(hidden.length){h+='<section class="section"><button class="linkbtn" data-act="mparked">'+(S.showParked?"Hide":"Show")+' '+hidden.length+' parked until their check-back date</button>'+(S.showParked?'<div class="list">'+hidden.sort((a,b)=>a.due<b.due?-1:1).map(mindRow).join("")+'</div>':"")+'</section>'}
  h+='<section class="section"><div class="section-h"><h3 class="muted">Closed this week</h3><span class="mono muted">'+closed.length+'</span></div>'+(closed.length?'<div class="list">'+closed.map(x=>'<div class="row done"><div class="row-top"><span class="row-main"><span class="row-title">'+esc(x.title)+'</span><span class="row-meta">'+esc(x.closedAs||"Done")+'</span></span><button class="linkbtn" data-act="mreopen" data-id="'+x.id+'">Reopen</button></div></div>').join("")+'</div>':'<div class="empty">Loops you close land here. Each one is headspace back.</div>')+'</section>';
  h+='<p class="hint">Weekly review: re-score each weight and check anything flagged as stuck.</p>';

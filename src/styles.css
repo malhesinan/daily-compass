@@ -176,11 +176,17 @@ a{color:var(--navy)}
 .wt{display:flex;gap:3px;flex:none}
 .wt i{width:7px;height:16px;border-radius:2px;background:var(--line)}
 .wt i.on{background:var(--brick)}
-.kind-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.kind-h p{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
-.row.k-decide .row-top{border-left-color:var(--brick)}
-.row.k-act .row-top{border-left-color:var(--navy)}
-.row.k-wait .row-top{border-left-color:var(--line)}
+.row-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none}
+.ktag{font-size:11px;font-weight:600;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.ktag.k-decide{background:var(--brick-soft);color:var(--brick)}
+.ktag.k-act{background:var(--navy-soft);color:var(--navy)}
+.ktag.k-wait{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+/* the status stripe runs down the whole card, including the button bar under it */
+.row.k-decide,.row.k-act,.row.k-wait{border-left-width:4px}
+.row.k-decide .row-top,.row.k-act .row-top,.row.k-wait .row-top{border-left:0}
+.row.k-decide{border-left-color:var(--brick)}
+.row.k-act{border-left-color:var(--navy)}
+.row.k-wait{border-left-color:var(--line)}
 .nextline{font-size:13px;color:var(--ink)}
 .nextline em{font-style:normal;color:var(--muted);font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-right:4px}
 .flag{font-size:12px;color:var(--amber);font-weight:600}
