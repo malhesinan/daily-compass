@@ -15,19 +15,18 @@ Everything here is free. Nothing requires a paid plan.
    (e.g. *Middle East (Bahrain)* or *Central EU (Frankfurt)*). Save the database password somewhere safe; the app doesn't need it.
 2. **Create the table:** open **SQL Editor → New query**, paste all of [`supabase/migrations/001_docs.sql`](supabase/migrations/001_docs.sql), click **Run**.
    It should say "Success. No rows returned".
-3. **Create your user:** you sign in with a **username** and a **4-digit code**. Behind the scenes that is a normal
-   Supabase user with email `<username>@users.daily-compass.app` and password `dc:<username>:<code>`.
-   **Authentication → Users → Add user → Create new user** with email `yourname@users.daily-compass.app`,
-   password `dc:yourname:1234`, and tick **Auto Confirm User**. (Username in lowercase.)
+3. **Create your user:** **Authentication → Users → Add user → Create new user** with your email and a password
+   (6+ characters), and tick **Auto Confirm User**. You sign in with these once on each device; after that the app
+   opens with a 4-digit passcode you choose on that device.
 
-   **Already have a user from the old email-code login?** Keep your data by renaming it instead:
+   **Already have a user from the old username + code login?** Keep your data by changing its email and password instead:
    ```sql
    update auth.users
-   set email = 'yourname@users.daily-compass.app',
-       encrypted_password = extensions.crypt('dc:yourname:1234', extensions.gen_salt('bf'))
-   where email = 'your-old-email@example.com';
+   set email = 'you@example.com',
+       encrypted_password = extensions.crypt('your-new-password', extensions.gen_salt('bf'))
+   where email = 'yourname@users.daily-compass.app';
    ```
-   To change your code later, run the same `update` with the new code (and `where email = 'yourname@users.daily-compass.app'`).
+   (Until you do, you can sign in with email `yourname@users.daily-compass.app` and password `dc:yourname:<old code>`.)
 4. **Turn off public sign-ups:** **Authentication → Sign In / Providers**, switch off **Allow new users to sign up**, then Save.
    From now on nobody else can create an account. Row Level Security also stops any other account from reading your rows.
 5. **Check that email sign-in is on:** **Authentication → Sign In / Providers → Email** should be enabled (it is by default).
@@ -83,8 +82,10 @@ For a custom domain, also add a variable `BASE_PATH` = `/`.
 
 ## 4. Install on iPhone
 
-Open the site in **Safari** → **Share** → **Add to Home Screen**. Open it from the Home Screen icon and enter your username and 4-digit code.
-That device stays signed in until the next deploy; after each deploy every device asks for the code once.
+Open the site in **Safari** → **Share** → **Add to Home Screen**. Open it from the Home Screen icon, sign in with your email and password, then choose a 4-digit passcode.
+From then on the app asks for that passcode every time you open it (or come back to it), and never for your password again on that device.
+The passcode is stored only on that device (as a hash). **Forgot?** on the passcode screen, or 5 wrong tries, signs the device out
+so you sign in with email and password again and pick a new passcode.
 
 ## Moving your data in
 
@@ -102,7 +103,7 @@ Importing adds to what's there. Running the same backup twice doesn't create dup
 | File | What it does |
 |---|---|
 | `src/app.js` | The whole app: screens, actions, and the sync engine (search for "store") |
-| `src/main.js` | Start-up and the sign-in screen |
+| `src/main.js` | Start-up, the sign-in screen and the passcode lock |
 | `src/importData.js` | Import (backup or old task list) and Export backup |
 | `src/styles.css` | All styling, including dark mode |
 | `public/sw.js` | Service worker: lets the app open offline |

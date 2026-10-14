@@ -565,7 +565,7 @@ async function act(a,d){
   a.href=URL.createObjectURL(blob);a.download="daily-compass-backup-"+today()+".json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);break}
  case"signout":{const n=outbox.length;
   if(!confirm(n?n+" change(s) haven't synced yet and will be lost. Sign out anyway?":"Sign out on this device?"))return;
-  try{[CACHE_KEY,OUTBOX_KEY,"dc-last-user"].forEach(k=>localStorage.removeItem(k))}catch(e){}
+  try{[CACHE_KEY,OUTBOX_KEY,"dc-last-user","dc-passcode","dc-passcode-tries"].forEach(k=>localStorage.removeItem(k))}catch(e){}
   await sb.auth.signOut();location.reload();break}
  case"add":{const t=d.type,title=val("q-title");if(!title){document.getElementById("q-title").focus();return}
   const v={type:t,title,createdAt:Date.now(),done:false};

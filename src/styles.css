@@ -228,4 +228,16 @@ body:not(.signed-in) .tabs{display:none}
 #login{gap:14px}
 #login .linkbtn{align-self:flex-start}
 textarea#imp-json{font-family:var(--f-mono);font-size:13px}
-input[type=email]{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:16px}
+input[type=email],input[type=password]{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:16px}
+.lock{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:auto;padding:max(24px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
+.lock-in{width:100%;max-width:320px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center}
+.dots{display:flex;gap:16px;margin-top:4px}
+.dots i{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--ink)}
+.dots i.on{background:var(--ink)}
+.dots.shake{animation:shake .35s}
+@keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+.lock-err{min-height:1.4em;font-size:13px;color:var(--brick)}
+.keypad{display:grid;grid-template-columns:repeat(3,72px);gap:14px 24px}
+.keypad button{width:72px;height:72px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-family:var(--f-display);font-size:26px;font-weight:600}
+.keypad button:active{background:var(--navy-soft)}
+.keypad button.txt{border:0;background:transparent;font-family:var(--f-body);font-size:13px;font-weight:500;color:var(--muted)}
